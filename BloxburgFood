@@ -7,11 +7,25 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local Camera = workspace.CurrentCamera
 
--- Global compatível com qualquer executor mobile (Delta, etc)
 _G.BloxburgChef = {}
 local isRunning = false
 local currentMacroId = 0
 local selectedFood = "Hot Dogs"
+
+-- Dicionário Bilíngue de Ações Válidas para Clicar
+local validActions = {
+    "fry", "bake", "cook", "prepare", "stir", "mix", "chop", 
+    "cut", "pour", "form", "garnish", "boil", "add", "blend",
+    "fritar", "assar", "cozinhar", "preparar", "mexer", "misturar", "cortar",
+    "picar", "despejar", "formar", "modelar", "decorar", "guarnecer", "ferver", 
+    "adicionar", "bater"
+}
+
+-- Palavras que indicam que o prato ACABOU
+local finishedActions = {
+    "place", "take portion", "eat", "store",
+    "colocar", "pegar porção", "comer", "guardar"
+}
 
 -- Sistema de Logs
 local function Log(texto, cor)
@@ -22,7 +36,7 @@ local function Log(texto, cor)
     end
 end
 
--- === LÓGICA DE MOVIMENTAÇÃO PERFEITA ===
+-- Movimentação Perfeita
 local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
     local targetCF = targetInstance:IsA("Model") and targetInstance:GetPivot() or targetInstance.CFrame
     local targetPos = targetCF.Position
@@ -30,7 +44,6 @@ local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
     local finalPos = Vector3.new(standPos.X, hrp.Position.Y, standPos.Z)
     
     Log("Caminhando até o alvo...", Color3.fromRGB(200, 200, 200))
-    
     humanoid.WalkSpeed = 16
     humanoid:MoveTo(finalPos)
     
@@ -65,17 +78,14 @@ local function PressE()
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
 end
 
--- CLIQUE MELHORADO: Verifica se o botão tem tamanho real na tela antes de atirar
 local function ForceClick(element)
     if not element or element.AbsoluteSize.X == 0 then return end
-    
     pcall(function()
         if element.MouseButton1Click then for _, conn in pairs(getconnections(element.MouseButton1Click)) do conn:Fire() end end
         if element.Activated then for _, conn in pairs(getconnections(element.Activated)) do conn:Fire() end end
         if element.InputBegan then for _, conn in pairs(getconnections(element.InputBegan)) do conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin}) end end
         if element.InputEnded then for _, conn in pairs(getconnections(element.InputEnded)) do conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.End}) end end
     end)
-    
     local center = element.AbsolutePosition + (element.AbsoluteSize / 2)
     local inset = GuiService:GetGuiInset()
     VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + inset.Y, 0, true, game, 1)
@@ -86,7 +96,7 @@ end
 -- === LOOP PRINCIPAL DE FARM ===
 local function RunFarmCycle(hrp, hum, myId)
     -- ==========================================
-    -- 1. GELADEIRA E SISTEMA DE VERIFICAÇÃO
+    -- 1. GELADEIRA
     -- ==========================================
     local closestFridge = nil; local dist = math.huge
     for _, item in pairs(workspace:WaitForChild("Plots"):GetDescendants()) do
@@ -98,8 +108,7 @@ local function RunFarmCycle(hrp, hum, myId)
     
     if closestFridge then
         WalkToTarget(hrp, hum, closestFridge, -3.5)
-        task.wait(0.8) -- Deixa o boneco estabilizar
-        PressE()
+        task.wait(0.8); PressE()
         
         local interactUI = PlayerGui:WaitForChild("_interactUI", 5)
         if not interactUI then return false end
@@ -108,47 +117,34 @@ local function RunFarmCycle(hrp, hum, myId)
         for i = 1, 30 do 
             if not isRunning or currentMacroId ~= myId then return false end
             for _, el in pairs(interactUI:GetDescendants()) do
-                if el:IsA("TextLabel") and el.Text == "Take Ingredients" then 
-                    takeIngBtn = el.Parent 
-                    break 
+                if el:IsA("TextLabel") then
+                    local txt = el.Text:lower()
+                    if txt == "take ingredients" or txt == "pegar ingredientes" then 
+                        takeIngBtn = el.Parent; break 
+                    end
                 end
             end
-            if takeIngBtn then break end
-            task.wait(0.1)
+            if takeIngBtn then break end; task.wait(0.1)
         end
 
         if not takeIngBtn then return false end
 
-        -- LÓGICA NOVA: Clica e verifica se a tela ABRIU REALMENTE
         local listMenu = nil
         for tentativa = 1, 5 do
             if not isRunning or currentMacroId ~= myId then return false end
-            
             ForceClick(takeIngBtn)
-            Log("Abrindo Geladeira (Tentativa " .. tentativa .. ")...", Color3.fromRGB(200, 200, 100))
-            task.wait(1.2) -- Tempo para a animação da UI do Bloxburg aparecer
-            
+            task.wait(1.2)
             listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)", true)
-            
-            -- Verifica se a lista existe E se ela está desenhada na tela (AbsoluteSize maior que 0)
-            if listMenu and listMenu.AbsoluteSize.Y > 0 then
-                Log("Tela de ingredientes confirmada!", Color3.fromRGB(50, 255, 50))
-                break
-            end
+            if listMenu and listMenu.AbsoluteSize.Y > 0 then break end
         end
 
-        if not listMenu or listMenu.AbsoluteSize.Y == 0 then
-            Log("ERRO: A tela da geladeira não abriu.", Color3.fromRGB(255, 50, 50))
-            return false
-        end
+        if not listMenu or listMenu.AbsoluteSize.Y == 0 then return false end
         
-        -- Agora ele procura a comida dentro da tela confirmada
         local targetFoodBtn = nil
         for i = 1, 50 do 
             if not isRunning or currentMacroId ~= myId then return false end
             targetFoodBtn = listMenu:FindFirstChild(selectedFood .. "_Button", true)
-            if targetFoodBtn then break end
-            task.wait(0.1)
+            if targetFoodBtn then break end; task.wait(0.1)
         end
         
         if targetFoodBtn then 
@@ -157,26 +153,63 @@ local function RunFarmCycle(hrp, hum, myId)
                 ForceClick(takeBtn)
                 local frame = listMenu:FindFirstChild("Frame")
                 local masterEvent = frame and frame:FindFirstChild("Event")
-                if masterEvent and masterEvent:IsA("BindableEvent") then 
-                    pcall(function() masterEvent:Fire(targetFoodBtn) end) 
-                end
+                if masterEvent and masterEvent:IsA("BindableEvent") then pcall(function() masterEvent:Fire(targetFoodBtn) end) end
             end
         else
-            Log("ERRO: Comida não achada na lista.", Color3.fromRGB(255, 50, 50))
-            return false
+            Log("ERRO: Comida não achada.", Color3.fromRGB(255, 50, 50)); return false
         end
     end
 
-    Log("Pegou comida. Preparando...", Color3.fromRGB(150, 255, 150))
-    task.wait(2.5) 
+    -- ==========================================
+    -- VERIFICAÇÃO INTELIGENTE SE PEGOU A COMIDA
+    -- ==========================================
+    local hasFood = false
+    local equippedBtn = nil
+    for w = 1, 40 do -- Espera até 4 segundos pra comida aparecer nas mãos
+        if not isRunning or currentMacroId ~= myId then return false end
+        equippedBtn = PlayerGui:FindFirstChild("EquippedButton", true)
+        if equippedBtn and equippedBtn.Visible then
+            hasFood = true
+            Log("Comida confirmada nas mãos!", Color3.fromRGB(50, 255, 50))
+            break
+        end
+        task.wait(0.1)
+    end
+
+    if not hasFood then
+        Log("ERRO: O item não foi parar na mão.", Color3.fromRGB(255, 50, 50))
+        return false
+    end
 
     -- ==========================================
-    -- 2. ESTAÇÃO DE TRABALHO
+    -- 2. ROTAS E ESTAÇÕES (O CÉREBRO)
     -- ==========================================
-    local targetStationName = "Basic Stove"
     local finished = false
     
     while isRunning and currentMacroId == myId and not finished do
+        -- LÊ O RÓTULO PARA DECIDIR O DESTINO
+        local targetStationName = "Basic Counter"
+        local actionLbl = equippedBtn:FindFirstChild("ActionLabel")
+        if actionLbl then
+            local act = actionLbl.Text:lower()
+            
+            -- Se a palavra indicar fim (Place, Take Portion), termina!
+            if table.find(finishedActions, act) then
+                Log("Prato Finalizado Automaticamente!", Color3.fromRGB(50, 255, 50))
+                finished = true
+                break
+            end
+            
+            Log("GPS: Precisamos " .. act, Color3.fromRGB(150, 200, 255))
+            
+            -- Define a estação pelo texto
+            if string.find(act, "fry") or string.find(act, "boil") or string.find(act, "cook") or string.find(act, "bake") or string.find(act, "fritar") or string.find(act, "ferver") or string.find(act, "cozinhar") or string.find(act, "assar") then
+                targetStationName = "Basic Stove"
+            else
+                targetStationName = "Basic Counter"
+            end
+        end
+
         local station = nil; local sDist = math.huge
         for _, item in pairs(workspace:WaitForChild("Plots"):GetDescendants()) do
             if item.Name == targetStationName then
@@ -189,28 +222,31 @@ local function RunFarmCycle(hrp, hum, myId)
             WalkToTarget(hrp, hum, station, -3.5)
             task.wait(0.5); PressE(); task.wait(1)
             
+            -- Tratamento de Erro do Jogo (Fallback)
             local msgBox = PlayerGui:FindFirstChild("MessageBox", true)
             if msgBox and msgBox.Visible then
                 ForceClick(msgBox:FindFirstChild("ButtonFrame"):FindFirstChildWhichIsA("GuiButton", true))
-                targetStationName = "Basic Counter" 
-                Log("Aviso lido: Indo para o Balcão!", Color3.fromRGB(255, 200, 100))
+                Log("Erro de estação contornado.", Color3.fromRGB(255, 200, 100))
+                -- Deixa o GPS corrigir na próxima volta do loop
                 continue
             end
             
+            -- VERIFICA SE ESTÁ SUJO
             local interact = PlayerGui:FindFirstChild("_interactUI")
             if interact then
                 for _, el in pairs(interact:GetDescendants()) do
-                    if el:IsA("TextLabel") then
-                        if el.Text:lower() == "clean" then 
-                            Log("Fogão sujo! Limpando...", Color3.fromRGB(255, 150, 50))
-                            ForceClick(el.Parent); task.wait(9)
-                            Log("Voltando para Geladeira.", Color3.fromRGB(150, 255, 150))
-                            return true
-                        end
+                    if el:IsA("TextLabel") and (el.Text:lower() == "clean" or el.Text:lower() == "limpar") then
+                        Log("Estação suja! Limpando...", Color3.fromRGB(255, 150, 50))
+                        ForceClick(el.Parent); task.wait(9)
+                        Log("Limpo! Recomeçando...", Color3.fromRGB(150, 255, 150))
+                        return true
                     end
                 end
             end
             
+            -- ==========================================
+            -- MINIGAME
+            -- ==========================================
             local ticks = 0
             local maxRecipeTicks = 1200 
             local recipeTickCount = 0
@@ -219,6 +255,7 @@ local function RunFarmCycle(hrp, hum, myId)
                 if not isRunning or currentMacroId ~= myId then return false end
                 local acted = false
                 
+                -- A) TELA CENTRAL DE LETRAS
                 local floating = PlayerGui:FindFirstChild("FloatingGui")
                 if floating then
                     for _, btn in pairs(floating:GetDescendants()) do
@@ -240,32 +277,51 @@ local function RunFarmCycle(hrp, hum, myId)
                     end
                 end
                 
-                local interactUI = PlayerGui:FindFirstChild("_interactUI")
-                if interactUI and not acted then
-                    for _, el in pairs(interactUI:GetDescendants()) do
-                        if el:IsA("TextLabel") then
-                            local txt = el.Text:lower()
-                            local validActions = {"fry","bake","cook","prepare","stir","mix","chop","cut","pour","form","garnish","boil","add","blend"}
-                            if table.find(validActions, txt) then
-                                ForceClick(el.Parent)
-                                acted = true
-                                break
-                            end
+                -- B) O BOTÃO AZUL (Que você descobriu!)
+                if equippedBtn and equippedBtn.Visible then
+                    local currentActionLbl = equippedBtn:FindFirstChild("ActionLabel")
+                    if currentActionLbl then
+                        local currentAction = currentActionLbl.Text:lower()
+                        
+                        -- Se o botão azul disser "Place" ou "Take", o prato acabou! Quebra o minigame.
+                        if table.find(finishedActions, currentAction) then
+                            finished = true
+                            break
+                        end
+                        
+                        if table.find(validActions, currentAction) then
+                            ForceClick(equippedBtn)
+                            acted = true
                         end
                     end
                 end
                 
+                -- C) MÃOZINHAS AZUIS FLUTUANTES (Backup)
+                local interactUI = PlayerGui:FindFirstChild("_interactUI")
+                if interactUI and not acted then
+                    for _, el in pairs(interactUI:GetDescendants()) do
+                        if el:IsA("TextLabel") and table.find(validActions, el.Text:lower()) then
+                            ForceClick(el.Parent)
+                            acted = true
+                            break
+                        end
+                    end
+                end
+                
+                -- CONTROLE DE OCIOSIDADE (15s limite)
                 if acted then
-                    ticks = 0
-                    task.wait(0.3)
+                    ticks = 0; task.wait(0.4)
                 else
                     ticks = ticks + 1
                     if ticks > 150 then 
-                        Log("Sem ações por 15s. Prato Concluído!", Color3.fromRGB(50, 255, 50))
-                        finished = true; 
-                        break 
+                        Log("Sem botões por 15s. Avançando.", Color3.fromRGB(50, 255, 50))
+                        break -- Quebra o minigame, o loop principal vai ler a Label de novo pra saber pra onde ir
                     end
                 end
+                
+                -- Se a Label mandou finalizar (do check B lá em cima)
+                if finished then break end
+                
                 recipeTickCount = recipeTickCount + 1
                 task.wait(0.1)
             end
@@ -286,6 +342,7 @@ function _G.BloxburgChef.Start(foodName)
     local hum = char and char:FindFirstChild("Humanoid")
     if hum then hum.WalkSpeed = 16 end 
     
+    Log("GPS Culinário e Botão Azul Ativos", Color3.fromRGB(100, 200, 255))
     Log("=== FARM INICIADO: " .. selectedFood .. " ===", Color3.fromRGB(50, 255, 50))
     
     task.spawn(function()
