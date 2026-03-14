@@ -153,7 +153,7 @@ function _G.BloxburgChef.Start(food)
                     local interactUI = PlayerGui:FindFirstChild("_interactUI")
                     if interactUI then
                         for _, el in pairs(interactUI:GetDescendants()) do
-                            if el:IsA("TextLabel") and (el.Text:lower():find("take") or el.Text:lower():find("pegar")) then
+                            if el:IsA("TextLabel") and (string.lower(el.Text):find("take") or string.lower(el.Text):find("pegar")) then
                                 ForceClick(el.Parent)
                                 break
                             end
@@ -173,28 +173,35 @@ function _G.BloxburgChef.Start(food)
                         end
                     end
                     
-                    task.wait(2.5) -- Espera a animação de tirar da geladeira
-                    
-                    -- VALIDAÇÃO: Lê a mão dele!
-                    local equipped = PlayerGui:FindFirstChild("EquippedButton", true)
-                    if equipped and equipped.Visible then
-                        local actLbl = equipped:FindFirstChild("ActionLabel")
-                        if actLbl then
-                            local act = actLbl.Text:lower()
-                            -- Verifica se a palavra na mão é uma ação de cozinhar
-                            for _, vAct in pairs(validActions) do
-                                if string.find(act, vAct) then
-                                    hasFood = true
-                                    Log("Comida confirmada nas mãos!", Color3.fromRGB(50, 255, 50))
-                                    break
+                    -- VALIDAÇÃO SCANNER (Espera até 4 segundos a comida ir para a mão)
+                    Log("Lendo as mãos...", Color3.fromRGB(200, 200, 200))
+                    for scan = 1, 40 do
+                        if not isRunning or currentMacroId ~= myId then break end
+                        
+                        local equipped = PlayerGui:FindFirstChild("EquippedButton", true)
+                        if equipped and equipped.Visible then
+                            local actLbl = equipped:FindFirstChild("ActionLabel")
+                            if actLbl and actLbl.Text ~= "" then
+                                -- Converte tudo para minúsculo para não importar se está "Fry", "FRY" ou " fry "
+                                local textInHand = string.lower(actLbl.Text) 
+                                
+                                for _, vAct in pairs(validActions) do
+                                    if string.find(textInHand, string.lower(vAct)) then
+                                        hasFood = true
+                                        Log("Comida (" .. actLbl.Text .. ") confirmada!", Color3.fromRGB(50, 255, 50))
+                                        break
+                                    end
                                 end
                             end
                         end
+                        
+                        if hasFood then break end
+                        task.wait(0.1) -- Espera 0.1s e olha a mão de novo
                     end
                     
                     if not hasFood then
-                        Log("Falha ao pegar comida. Tentando novamente...", Color3.fromRGB(255, 100, 100))
-                        task.wait(1)
+                        Log("Mão vazia. Falha ao pegar comida. Tentando novamente...", Color3.fromRGB(255, 100, 100))
+                        task.wait(1.5) -- Pausa antes de tentar abrir a geladeira de novo
                     end
                 else
                     Log("Não achei a geladeira no seu lote!", Color3.fromRGB(255, 50, 50))
@@ -212,13 +219,17 @@ function _G.BloxburgChef.Start(food)
                 if equipped and equipped.Visible then
                     local actLbl = equipped:FindFirstChild("ActionLabel")
                     if actLbl then
-                        local act = actLbl.Text:lower()
+                        local act = string.lower(actLbl.Text) -- Sempre minúsculo
                         
-                        if table.find(finishedActions, act) then
-                            Log("Prato Finalizado!", Color3.fromRGB(50, 255, 50))
-                            finished = true
-                            break
+                        -- Verifica se o prato acabou
+                        for _, fAct in pairs(finishedActions) do
+                            if string.find(act, string.lower(fAct)) then
+                                Log("Prato Finalizado!", Color3.fromRGB(50, 255, 50))
+                                finished = true
+                                break
+                            end
                         end
+                        if finished then break end
                         
                         -- Descobre se precisa de Fogão ou Balcão
                         local isStove = string.find(act, "fry") or string.find(act, "boil") or string.find(act, "cook") or string.find(act, "bake") or string.find(act, "fritar") or string.find(act, "ferver") or string.find(act, "cozinhar") or string.find(act, "assar")
@@ -233,7 +244,7 @@ function _G.BloxburgChef.Start(food)
                             local interactUI = PlayerGui:FindFirstChild("_interactUI")
                             if interactUI then
                                 for _, el in pairs(interactUI:GetDescendants()) do
-                                    if el:IsA("TextLabel") and (el.Text:lower() == "clean" or el.Text:lower() == "limpar") then
+                                    if el:IsA("TextLabel") and (string.lower(el.Text) == "clean" or string.lower(el.Text) == "limpar") then
                                         Log("Limpando sujeira...", Color3.fromRGB(255, 150, 50))
                                         ForceClick(el.Parent)
                                         task.wait(9)
@@ -269,14 +280,18 @@ function _G.BloxburgChef.Start(food)
                                     end
                                 end
                                 
-                                -- Se o botão azul mudar para Eat/Place no meio do minigame, sai rápido
-                                if table.find(finishedActions, actLbl.Text:lower()) then
-                                    finished = true
-                                    break
+                                -- Verifica se a ação mudou ou acabou no meio do minigame
+                                local currentAct = string.lower(actLbl.Text)
+                                local endEarly = false
+                                for _, fAct in pairs(finishedActions) do
+                                    if string.find(currentAct, string.lower(fAct)) then
+                                        finished = true
+                                        endEarly = true
+                                        break
+                                    end
                                 end
                                 
-                                -- Se o botão azul mudou de palavra (ex: Mix virou Bake), avança para a próxima estação
-                                if actLbl.Text:lower() ~= act then break end
+                                if endEarly or currentAct ~= act then break end
                                 
                                 task.wait(0.2)
                             end
