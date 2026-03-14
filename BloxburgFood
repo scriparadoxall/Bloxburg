@@ -30,9 +30,8 @@ local function Log(texto, cor)
     if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog(texto, cor) else print("[Chef] " .. texto) end
 end
 
--- === LEITURA DE AÇÃO PELO CAMINHO ABSOLUTO (Sua descoberta!) ===
+-- === LEITURA DE AÇÃO PELO CAMINHO ABSOLUTO ===
 local function GetCurrentAction()
-    -- Caminho: PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer.ActionLabel
     local hudGui = PlayerGui:FindFirstChild("HUDGui")
     if hudGui then
         local hotbar = hudGui:FindFirstChild("Hotbar")
@@ -45,7 +44,6 @@ local function GetCurrentAction()
                     if equippedContainer and equippedContainer.Visible then
                         local actionLabel = equippedContainer:FindFirstChild("ActionLabel")
                         if actionLabel and actionLabel.Text ~= "" then
-                            -- Retorna o texto minúsculo e o recipiente clicável
                             return string.lower(actionLabel.Text), equippedContainer
                         end
                     end
@@ -161,7 +159,7 @@ function _G.BloxburgChef.Start(food)
     currentMacroId = currentMacroId + 1
     local myId = currentMacroId
     
-    Log("Farm Iniciado (Pathing Exato)", Color3.fromRGB(50, 255, 50))
+    Log("Farm Iniciado", Color3.fromRGB(50, 255, 50))
     
     task.spawn(function()
         while isRunning and currentMacroId == myId do
@@ -172,8 +170,6 @@ function _G.BloxburgChef.Start(food)
             local hasFood = false
             
             while isRunning and currentMacroId == myId and not hasFood do
-                
-                -- Verifica o Caminho Absoluto antes de ir na geladeira
                 local startActText, _ = GetCurrentAction()
                 if startActText then
                     for _, vAct in pairs(validActions) do
@@ -216,7 +212,6 @@ function _G.BloxburgChef.Start(food)
                     for scan = 1, 40 do
                         if not isRunning or currentMacroId ~= myId then break end
                         
-                        -- Leitura Instantânea pelo Caminho Exato
                         local actText, _ = GetCurrentAction()
                         if actText then
                             for _, vAct in pairs(validActions) do
@@ -243,7 +238,7 @@ function _G.BloxburgChef.Start(food)
             end
             
             -- ==========================================
-            -- 2. FASE DE COZINHAR (ESTAÇÕES)
+            -- 2. FASE DE COZINHAR E CLICAR!
             -- ==========================================
             local finished = false
             
@@ -260,6 +255,7 @@ function _G.BloxburgChef.Start(food)
                     end
                     if finished then break end
                     
+                    -- DESCUBRE O LOCAL CORRETO
                     local isStove = string.find(actText, "fry") or string.find(actText, "boil") or string.find(actText, "cook") or string.find(actText, "bake") or string.find(actText, "fritar") or string.find(actText, "ferver") or string.find(actText, "cozinhar") or string.find(actText, "assar")
                     local targetName = isStove and "Basic Stove" or "Basic Counter"
                     
@@ -268,7 +264,7 @@ function _G.BloxburgChef.Start(food)
                     if MoveToStation(targetName) then
                         task.wait(0.5)
                         
-                        -- Limpeza
+                        -- Limpeza de balcão
                         local interactUI = PlayerGui:FindFirstChild("_interactUI")
                         if interactUI then
                             for _, el in pairs(interactUI:GetDescendants()) do
@@ -281,11 +277,14 @@ function _G.BloxburgChef.Start(food)
                             end
                         end
                         
-                        -- Minigame (Mantido a busca na FloatingGui para as letras)
+                        -- MINIGAME DE CLICAR NAS AÇÕES (Agora sim!)
                         local stageStart = tick()
                         while tick() - stageStart < 20 do
                             if not isRunning or currentMacroId ~= myId then break end
                             
+                            local acted = false
+                            
+                            -- A) Clica nas letras e bolinhas flutuantes (FloatingGui)
                             local float = PlayerGui:FindFirstChild("FloatingGui")
                             if float then
                                 for _, b in pairs(float:GetDescendants()) do
@@ -304,24 +303,59 @@ function _G.BloxburgChef.Start(food)
                                         else
                                             ForceClick(b)
                                         end
+                                        acted = true
                                     end
                                 end
                             end
                             
-                            -- Usa o Caminho Exato para saber se a etapa mudou
-                            local currentAct, _ = GetCurrentAction()
-                            if not currentAct then break end 
-                            
-                            local endEarly = false
-                            for _, fAct in pairs(finishedActions) do
-                                if string.find(currentAct, string.lower(fAct)) then
-                                    finished = true
-                                    endEarly = true
-                                    break
+                            -- B) CLICA NO BOTÃO AZUL PRINCIPAL (O que estava faltando!)
+                            local currentAct, currentBtn = GetCurrentAction()
+                            if currentAct and currentBtn then
+                                -- Verifica se o prato terminou
+                                local endEarly = false
+                                for _, fAct in pairs(finishedActions) do
+                                    if string.find(currentAct, string.lower(fAct)) then
+                                        finished = true
+                                        endEarly = true
+                                        break
+                                    end
                                 end
+                                
+                                if endEarly then break end
+                                
+                                -- Se for uma ação válida, esmaga o botão azul!
+                                for _, vAct in pairs(validActions) do
+                                    if string.find(currentAct, string.lower(vAct)) then
+                                        ForceClick(currentBtn)
+                                        acted = true
+                                        break
+                                    end
+                                end
+                                
+                                -- Se a palavra mudou (ex: de Mix para Bake), sai do minigame para o boneco mudar de móvel
+                                if currentAct ~= actText then break end
+                            else
+                                -- Se o botão sumiu da tela
+                                break
                             end
                             
-                            if endEarly or currentAct ~= actText then break end
+                            -- C) Mãozinhas de backup (InteractUI 3D)
+                            local interactUI = PlayerGui:FindFirstChild("_interactUI")
+                            if interactUI and not acted then
+                                for _, el in pairs(interactUI:GetDescendants()) do
+                                    if el:IsA("TextLabel") and el.Text ~= "" then
+                                        local txt = string.lower(el.Text)
+                                        for _, vAct in pairs(validActions) do
+                                            if string.find(txt, string.lower(vAct)) then
+                                                ForceClick(el.Parent)
+                                                acted = true
+                                                break
+                                            end
+                                        end
+                                    end
+                                    if acted then break end
+                                end
+                            end
                             
                             task.wait(0.2)
                         end
