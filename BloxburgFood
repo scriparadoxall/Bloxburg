@@ -31,7 +31,6 @@ local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
     
     Log("Caminhando até o alvo...", Color3.fromRGB(200, 200, 200))
     
-    -- Garante que o boneco PODE andar
     humanoid.WalkSpeed = 16
     humanoid:MoveTo(finalPos)
     
@@ -39,7 +38,6 @@ local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
     local timeout = 0
     local camConnection = RunService.RenderStepped:Connect(function()
         if (hrp.Position - finalPos).Magnitude > 1.5 then
-            -- Câmera seguindo suavemente nas costas
             local backPos = hrp.Position - (hrp.CFrame.LookVector * 7) + Vector3.new(0, 5, 0)
             Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(backPos, hrp.Position + hrp.CFrame.LookVector * 5), 0.1)
         else
@@ -54,7 +52,7 @@ local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
     end
     
     camConnection:Disconnect()
-    humanoid:MoveTo(hrp.Position) -- FREIO IMEDIATO
+    humanoid:MoveTo(hrp.Position) 
     
     hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
     Camera.CameraType = Enum.CameraType.Custom
@@ -67,14 +65,17 @@ local function PressE()
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
 end
 
+-- CLIQUE MELHORADO: Verifica se o botão tem tamanho real na tela antes de atirar
 local function ForceClick(element)
-    if not element then return end
+    if not element or element.AbsoluteSize.X == 0 then return end
+    
     pcall(function()
         if element.MouseButton1Click then for _, conn in pairs(getconnections(element.MouseButton1Click)) do conn:Fire() end end
         if element.Activated then for _, conn in pairs(getconnections(element.Activated)) do conn:Fire() end end
         if element.InputBegan then for _, conn in pairs(getconnections(element.InputBegan)) do conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin}) end end
         if element.InputEnded then for _, conn in pairs(getconnections(element.InputEnded)) do conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.End}) end end
     end)
+    
     local center = element.AbsolutePosition + (element.AbsoluteSize / 2)
     local inset = GuiService:GetGuiInset()
     VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + inset.Y, 0, true, game, 1)
@@ -84,7 +85,9 @@ end
 
 -- === LOOP PRINCIPAL DE FARM ===
 local function RunFarmCycle(hrp, hum, myId)
-    -- 1. GELADEIRA
+    -- ==========================================
+    -- 1. GELADEIRA E SISTEMA DE VERIFICAÇÃO
+    -- ==========================================
     local closestFridge = nil; local dist = math.huge
     for _, item in pairs(workspace:WaitForChild("Plots"):GetDescendants()) do
         if item.Name == "Icebox Fridge" then
@@ -95,27 +98,81 @@ local function RunFarmCycle(hrp, hum, myId)
     
     if closestFridge then
         WalkToTarget(hrp, hum, closestFridge, -3.5)
-        task.wait(0.5); PressE()
+        task.wait(0.8) -- Deixa o boneco estabilizar
+        PressE()
         
         local interactUI = PlayerGui:WaitForChild("_interactUI", 5)
-        if interactUI then
+        if not interactUI then return false end
+
+        local takeIngBtn = nil
+        for i = 1, 30 do 
+            if not isRunning or currentMacroId ~= myId then return false end
             for _, el in pairs(interactUI:GetDescendants()) do
-                if el:IsA("TextLabel") and el.Text == "Take Ingredients" then ForceClick(el.Parent) break end
+                if el:IsA("TextLabel") and el.Text == "Take Ingredients" then 
+                    takeIngBtn = el.Parent 
+                    break 
+                end
             end
-            task.wait(1)
-            local listMenu = PlayerGui:WaitForChild("_ListFrame (T_Ingredients)", 5)
-            local btn = listMenu and listMenu:FindFirstChild(selectedFood .. "_Button", true)
-            if btn then 
-                ForceClick(btn:FindFirstChild("Take"))
-                pcall(function() listMenu.Frame.Event:Fire(btn) end)
+            if takeIngBtn then break end
+            task.wait(0.1)
+        end
+
+        if not takeIngBtn then return false end
+
+        -- LÓGICA NOVA: Clica e verifica se a tela ABRIU REALMENTE
+        local listMenu = nil
+        for tentativa = 1, 5 do
+            if not isRunning or currentMacroId ~= myId then return false end
+            
+            ForceClick(takeIngBtn)
+            Log("Abrindo Geladeira (Tentativa " .. tentativa .. ")...", Color3.fromRGB(200, 200, 100))
+            task.wait(1.2) -- Tempo para a animação da UI do Bloxburg aparecer
+            
+            listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)", true)
+            
+            -- Verifica se a lista existe E se ela está desenhada na tela (AbsoluteSize maior que 0)
+            if listMenu and listMenu.AbsoluteSize.Y > 0 then
+                Log("Tela de ingredientes confirmada!", Color3.fromRGB(50, 255, 50))
+                break
             end
+        end
+
+        if not listMenu or listMenu.AbsoluteSize.Y == 0 then
+            Log("ERRO: A tela da geladeira não abriu.", Color3.fromRGB(255, 50, 50))
+            return false
+        end
+        
+        -- Agora ele procura a comida dentro da tela confirmada
+        local targetFoodBtn = nil
+        for i = 1, 50 do 
+            if not isRunning or currentMacroId ~= myId then return false end
+            targetFoodBtn = listMenu:FindFirstChild(selectedFood .. "_Button", true)
+            if targetFoodBtn then break end
+            task.wait(0.1)
+        end
+        
+        if targetFoodBtn then 
+            local takeBtn = targetFoodBtn:FindFirstChild("Take")
+            if takeBtn then
+                ForceClick(takeBtn)
+                local frame = listMenu:FindFirstChild("Frame")
+                local masterEvent = frame and frame:FindFirstChild("Event")
+                if masterEvent and masterEvent:IsA("BindableEvent") then 
+                    pcall(function() masterEvent:Fire(targetFoodBtn) end) 
+                end
+            end
+        else
+            Log("ERRO: Comida não achada na lista.", Color3.fromRGB(255, 50, 50))
+            return false
         end
     end
 
     Log("Pegou comida. Preparando...", Color3.fromRGB(150, 255, 150))
     task.wait(2.5) 
 
+    -- ==========================================
     -- 2. ESTAÇÃO DE TRABALHO
+    -- ==========================================
     local targetStationName = "Basic Stove"
     local finished = false
     
@@ -132,12 +189,11 @@ local function RunFarmCycle(hrp, hum, myId)
             WalkToTarget(hrp, hum, station, -3.5)
             task.wait(0.5); PressE(); task.wait(1)
             
-            -- Trata o aviso de precisar mudar de balcão para fogão e vice-versa
             local msgBox = PlayerGui:FindFirstChild("MessageBox", true)
             if msgBox and msgBox.Visible then
                 ForceClick(msgBox:FindFirstChild("ButtonFrame"):FindFirstChildWhichIsA("GuiButton", true))
                 targetStationName = "Basic Counter" 
-                Log("Aviso lido: O Prato precisa do Balcão!", Color3.fromRGB(255, 200, 100))
+                Log("Aviso lido: Indo para o Balcão!", Color3.fromRGB(255, 200, 100))
                 continue
             end
             
@@ -155,16 +211,14 @@ local function RunFarmCycle(hrp, hum, myId)
                 end
             end
             
-            -- MINIGAME SUPREMO COM TIMER DE 15 SEGUNDOS
             local ticks = 0
-            local maxRecipeTicks = 1200 -- 2 minutos de limite total pra receita não travar o bot pra sempre
+            local maxRecipeTicks = 1200 
             local recipeTickCount = 0
 
             while recipeTickCount < maxRecipeTicks do
                 if not isRunning or currentMacroId ~= myId then return false end
                 local acted = false
                 
-                -- A) VARREDURA DO FLOATING GUI
                 local floating = PlayerGui:FindFirstChild("FloatingGui")
                 if floating then
                     for _, btn in pairs(floating:GetDescendants()) do
@@ -186,7 +240,6 @@ local function RunFarmCycle(hrp, hum, myId)
                     end
                 end
                 
-                -- B) VARREDURA DAS MÃOZINHAS AZUIS (_interactUI)
                 local interactUI = PlayerGui:FindFirstChild("_interactUI")
                 if interactUI and not acted then
                     for _, el in pairs(interactUI:GetDescendants()) do
@@ -202,13 +255,11 @@ local function RunFarmCycle(hrp, hum, myId)
                     end
                 end
                 
-                -- C) CONTROLE DE OCIOSIDADE (15 Segundos)
                 if acted then
                     ticks = 0
                     task.wait(0.3)
                 else
                     ticks = ticks + 1
-                    -- 150 ticks * 0.1s = 15 SEGUNDOS DE ESPERA
                     if ticks > 150 then 
                         Log("Sem ações por 15s. Prato Concluído!", Color3.fromRGB(50, 255, 50))
                         finished = true; 
@@ -224,7 +275,6 @@ local function RunFarmCycle(hrp, hum, myId)
 end
 
 -- === COMANDOS DO HUB ===
-
 function _G.BloxburgChef.Start(foodName)
     if isRunning then return end
     selectedFood = foodName or "Hot Dogs"
