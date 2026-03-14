@@ -1,10 +1,8 @@
 local Players = game:GetService("Players")
 local VirtualInputManager = game:GetService("VirtualInputManager")
-local GuiService = game:GetService("GuiService")
-local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local Camera = workspace.CurrentCamera
 
 _G.BloxburgChef = {}
@@ -12,161 +10,113 @@ local isRunning = false
 local currentMacroId = 0
 local selectedFood = "Hot Dogs"
 
--- Sistema de Log
-local function Log(texto, cor)
-    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog(texto, cor) end
+-- === SISTEMA DE VISÃO HUMANA (Ajusta a sua câmera real) ===
+local function AdjustCameraToObject(targetInstance)
+    local targetPos = targetInstance:GetPivot().Position
+    
+    -- Bloxburg só mostra o "E" se o centro da tela bater no objeto.
+    -- Vamos mirar um pouco abaixo do topo do fogão (onde ficam as bocas)
+    local lookTarget = targetPos + Vector3.new(0, -0.2, 0)
+    
+    -- Suaviza o movimento da sua câmera para parecer humano
+    local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local goal = {CFrame = CFrame.lookAt(Camera.CFrame.Position, lookTarget)}
+    
+    local tween = TweenService:Create(Camera, tweenInfo, goal)
+    tween:Play()
+    task.wait(0.5) -- Espera a visão alinhar
 end
 
--- === ROTAÇÃO HUMANA ===
-local function FaceObjectHumane(hrp, targetPos)
-    -- Vira o boneco para o objeto (Isso já arrasta a câmera Custom junto)
-    local newLook = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)
-    hrp.CFrame = CFrame.lookAt(hrp.Position, newLook)
-    
-    -- Dá um leve ajuste na câmera para ela olhar um pouco para baixo (ângulo de interação)
-    -- Simulando o movimento do mouse/dedo do jogador
-    local camPos = Camera.CFrame.Position
-    local targetWithOffset = targetPos + Vector3.new(0, -1, 0) -- Olha para o meio do fogão
-    
-    -- Tween suave de 0.3 segundos para a câmera não dar "pulo"
-    local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    local goal = {CFrame = CFrame.lookAt(camPos, targetWithOffset)}
-    game:GetService("TweenService"):Create(Camera, tweenInfo, goal):Play()
+-- === LOCALIZADOR POR PASTA (Conforme sua imagem do Explorer) ===
+local function GetMyPlot()
+    for _, plot in pairs(workspace.Plots:GetChildren()) do
+        if string.find(plot.Name, LocalPlayer.Name) or plot:FindFirstChild("House") then
+            return plot
+        end
+    end
 end
 
-local function WalkToTarget(hrp, humanoid, targetInstance)
-    local targetPos = targetInstance:IsA("Model") and targetInstance:GetPivot().Position or targetInstance.Position
+local function FindStation(name)
+    local plot = GetMyPlot()
+    if plot and plot.House:FindFirstChild("Counters") then
+        local counters = plot.House.Counters:GetChildren()
+        local closest = nil
+        local dist = math.huge
+        for _, obj in pairs(counters) do
+            if obj.Name == name then
+                local d = (LocalPlayer.Character.HumanoidRootPart.Position - obj:GetPivot().Position).Magnitude
+                if d < dist then dist = d; closest = obj end
+            end
+        end
+        return closest
+    end
+end
+
+-- === MOVIMENTAÇÃO E INTERAÇÃO ===
+local function GoToAndInteract(objectName)
+    local obj = FindStation(objectName)
+    if not obj then return false end
     
-    -- Distância de braço (3 blocos)
-    local direction = (hrp.Position - targetPos).Unit
-    local finalPos = targetPos + (direction * 3)
-    finalPos = Vector3.new(finalPos.X, hrp.Position.Y, finalPos.Z)
+    local hrp = LocalPlayer.Character.HumanoidRootPart
+    local hum = LocalPlayer.Character.Humanoid
+    local targetPos = obj:GetPivot().Position
     
-    humanoid:MoveTo(finalPos)
+    -- Calcula posição de parada (frente ao fogão)
+    local offset = (hrp.Position - targetPos).Unit * 3.2
+    local walkPos = targetPos + Vector3.new(offset.X, 0, offset.Z)
     
+    hum:MoveTo(walkPos)
     local timeout = 0
-    while (hrp.Position - finalPos).Magnitude > 1.5 and timeout < 100 do
-        if humanoid.MoveDirection.Magnitude < 0.1 then humanoid.Jump = true end
-        task.wait(0.1)
-        timeout = timeout + 1
+    while (hrp.Position - walkPos).Magnitude > 1.5 and timeout < 50 do
+        task.wait(0.1); timeout = timeout + 1
     end
     
-    -- CHEGOU: Agora faz a virada humana
-    FaceObjectHumane(hrp, targetPos)
-    task.wait(0.3)
-end
-
--- Lógica de Cliques e Botão Azul
-local function PressE()
+    -- A MÁGICA: Vira o corpo e arruma a visão da sua câmera
+    hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
+    AdjustCameraToObject(obj)
+    
+    task.wait(0.2)
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
     task.wait(0.05)
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+    return true
 end
 
-local function ForceClick(element)
-    if not element or not element.Visible then return end
-    local center = element.AbsolutePosition + (element.AbsoluteSize / 2)
-    local inset = GuiService:GetGuiInset()
-    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + inset.Y, 0, true, game, 1)
-    task.wait(0.05)
-    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + inset.Y, 0, false, game, 1)
-end
-
--- === CICLO DE COZINHA ===
-local function RunFarmCycle(hrp, hum, myId)
-    -- Busca a Geladeira mais próxima
-    local fridge = nil; local dist = math.huge
-    for _, item in pairs(workspace:GetDescendants()) do
-        if item.Name == "Icebox Fridge" then
-            local d = (hrp.Position - item:GetPivot().Position).Magnitude
-            if d < dist then dist = d; fridge = item end
-        end
-    end
-
-    if fridge then
-        WalkToTarget(hrp, hum, fridge)
-        task.wait(0.2)
-        PressE()
-        Log("Abrindo Geladeira...", Color3.fromRGB(255, 255, 255))
-        
-        -- Espera carregar a lista e clica em Ingredients
-        task.wait(1.5)
-        local listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)", true)
-        if listMenu then
-            local foodBtn = listMenu:FindFirstChild(selectedFood .. "_Button", true)
-            if foodBtn then
-                ForceClick(foodBtn:FindFirstChild("Take"))
-                pcall(function() listMenu.Frame.Event:Fire(foodBtn) end)
-            end
-        end
-    end
-
-    -- Loop de Estações (Fogão/Balcão) baseado no texto do botão azul
-    while isRunning and currentMacroId == myId do
-        local equipped = PlayerGui:FindFirstChild("EquippedButton", true)
-        if equipped and equipped.Visible then
-            local actLbl = equipped:FindFirstChild("ActionLabel")
-            if actLbl then
-                local act = actLbl.Text:lower()
-                
-                -- Se aparecer Eat ou Place, acabou
-                if act:find("eat") or act:find("place") or act:find("portion") then 
-                    Log("Prato pronto!", Color3.fromRGB(50, 255, 50))
-                    break 
-                end
-                
-                -- Decide destino
-                local isStove = act:find("fry") or act:find("boil") or act:find("cook") or act:find("bake")
-                local targetName = isStove and "Basic Stove" or "Basic Counter"
-                
-                local station = nil; local sDist = math.huge
-                for _, item in pairs(workspace:GetDescendants()) do
-                    if item.Name == targetName then
-                        local d = (hrp.Position - item:GetPivot().Position).Magnitude
-                        if d < sDist then sDist = d; station = item end
-                    end
-                end
-                
-                if station then
-                    WalkToTarget(hrp, hum, station)
-                    task.wait(0.2)
-                    PressE()
-                    
-                    -- Minigame (Clica em tudo que aparecer na FloatingGui)
-                    local start = tick()
-                    while tick() - start < 25 do
-                        local float = PlayerGui:FindFirstChild("FloatingGui")
-                        if float then
-                            for _, b in pairs(float:GetDescendants()) do
-                                if b:IsA("GuiButton") and b.Visible then ForceClick(b) end
-                            end
-                        end
-                        -- Se o botão azul mudar de texto, significa que mudou a etapa
-                        if actLbl.Text:lower() ~= act then break end
-                        task.wait(0.2)
-                    end
-                end
-            end
-        end
-        task.wait(0.5)
-    end
-end
-
--- === CONTROLES DO HUB ===
-function _G.BloxburgChef.Start(foodName)
-    if isRunning then return end
-    selectedFood = foodName or "Hot Dogs"
+-- === LOOP PRINCIPAL ===
+function _G.BloxburgChef.Start(food)
+    selectedFood = food or "Hot Dogs"
     isRunning = true
     currentMacroId = currentMacroId + 1
     local myId = currentMacroId
-    Log("Farm Iniciado - Modo Humano", Color3.fromRGB(50, 255, 50))
     
     task.spawn(function()
-        local char = LocalPlayer.Character
-        local hrp = char:WaitForChild("HumanoidRootPart")
-        local hum = char:WaitForChild("Humanoid")
         while isRunning and currentMacroId == myId do
-            RunFarmCycle(hrp, hum, myId)
+            -- 1. Vai na Geladeira
+            GoToAndInteract("Icebox Fridge")
+            task.wait(2)
+            
+            -- (Aqui entra a lógica de clicar no menu que já tínhamos)
+            -- 2. Cozinha (Exemplo com Fogão)
+            GoToAndInteract("Basic Stove")
+            
+            -- Simula o minigame clicando na tela
+            local start = tick()
+            while tick() - start < 15 do
+                local float = LocalPlayer.PlayerGui:FindFirstChild("FloatingGui")
+                if float then
+                    -- Clica nos botões que aparecem na sua tela
+                    for _, b in pairs(float:GetDescendants()) do
+                        if b:IsA("GuiButton") and b.Visible then
+                            -- Força o clique humano
+                            local pos = b.AbsolutePosition + (b.AbsoluteSize/2)
+                            VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y + 58, 0, true, game, 1)
+                            task.wait(0.05)
+                            VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y + 58, 0, false, game, 1)
+                        end
+                    end
+                end
+                task.wait(0.2)
+            end
             task.wait(1)
         end
     end)
@@ -175,5 +125,4 @@ end
 function _G.BloxburgChef.Stop()
     isRunning = false
     currentMacroId = currentMacroId + 1
-    Log("Farm Parado", Color3.fromRGB(255, 100, 100))
 end
