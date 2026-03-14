@@ -34,53 +34,45 @@ local function Log(texto, cor)
     end
 end
 
--- === CÂMERA CINEMATOGRÁFICA CORRIGIDA ===
-local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
+-- === MOVIMENTAÇÃO E CÂMERA 100% FOCADA ===
+local function WalkToTarget(hrp, humanoid, targetInstance)
     local targetCF = targetInstance:IsA("Model") and targetInstance:GetPivot() or targetInstance.CFrame
     local targetPos = targetCF.Position
-    local standPos = (targetCF * CFrame.new(0, 0, distanceOffset)).Position
-    local finalPos = Vector3.new(standPos.X, hrp.Position.Y, standPos.Z)
     
-    Log("Caminhando e focando câmera...", Color3.fromRGB(200, 200, 200))
+    -- Calcula uma posição segura a 3.5 blocos de distância do objeto, na direção em que o player já está
+    local direction = (hrp.Position - targetPos).Unit
+    local finalPos = targetPos + Vector3.new(direction.X * 3.5, 0, direction.Z * 3.5)
+    finalPos = Vector3.new(finalPos.X, hrp.Position.Y, finalPos.Z)
+    
+    Log("Indo para o objeto...", Color3.fromRGB(200, 200, 200))
+    
+    -- Libera a câmera para andar normal
+    Camera.CameraType = Enum.CameraType.Custom
     humanoid.WalkSpeed = 16
     humanoid:MoveTo(finalPos)
-    
-    -- O SEGREDO: Trava a câmera da engine para o script assumir o volante!
-    Camera.CameraType = Enum.CameraType.Scriptable
     
     local arrived = false
     local timeout = 0
     
-    -- Gira a câmera focando a lente SEMPRE no objeto alvo
-    local camConnection = RunService.RenderStepped:Connect(function()
-        if (hrp.Position - finalPos).Magnitude > 1.5 then
-            local backPos = hrp.Position - (hrp.CFrame.LookVector * 6) + Vector3.new(0, 4, 0)
-            local goalCF = CFrame.lookAt(backPos, targetPos)
-            Camera.CFrame = Camera.CFrame:Lerp(goalCF, 0.1)
-        else
-            arrived = true
-        end
-    end)
-    
     while not arrived and timeout < 100 do
-        humanoid:MoveTo(finalPos) 
+        if (hrp.Position - finalPos).Magnitude < 1.5 then
+            arrived = true
+        else
+            humanoid:MoveTo(finalPos) 
+        end
         timeout = timeout + 1
         task.wait(0.1)
     end
     
-    camConnection:Disconnect()
-    humanoid:MoveTo(hrp.Position) 
+    humanoid:MoveTo(hrp.Position) -- Freio instantâneo
+    task.wait(0.1)
     
-    -- Gira o boneco
+    -- 1. Vira o CORPO do boneco EXATAMENTE de frente pro objeto
     hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
     
-    -- Calcula a posição exata da câmera nas costas
+    -- 2. Trava a CÂMERA nas costas, olhando FIXAMENTE para o centro do objeto
+    Camera.CameraType = Enum.CameraType.Scriptable
     local finalCamPos = hrp.Position - (hrp.CFrame.LookVector * 5) + Vector3.new(0, 3, 0)
-    Camera.CFrame = CFrame.lookAt(finalCamPos, targetPos)
-    
-    -- Devolve o controle pro Roblox, mas injeta o nosso novo ângulo!
-    Camera.CameraType = Enum.CameraType.Custom
-    task.wait(0.05)
     Camera.CFrame = CFrame.lookAt(finalCamPos, targetPos)
 end
 
@@ -119,7 +111,7 @@ local function RunFarmCycle(hrp, hum, myId)
     end
     
     if closestFridge then
-        WalkToTarget(hrp, hum, closestFridge, -3.5)
+        WalkToTarget(hrp, hum, closestFridge)
         task.wait(0.8); PressE()
         
         local interactUI = PlayerGui:WaitForChild("_interactUI", 5)
@@ -188,7 +180,7 @@ local function RunFarmCycle(hrp, hum, myId)
     if not hasFood then return false end
 
     -- ==========================================
-    -- 2. ROTAS E ESTAÇÕES (O CÉREBRO)
+    -- 2. ROTAS E ESTAÇÕES
     -- ==========================================
     local finished = false
     
@@ -204,7 +196,7 @@ local function RunFarmCycle(hrp, hum, myId)
                 break
             end
             
-            Log("GPS: Precisamos " .. actionLbl.Text, Color3.fromRGB(150, 200, 255))
+            Log("Ação Necessária: " .. actionLbl.Text, Color3.fromRGB(150, 200, 255))
             
             if string.find(act, "fry") or string.find(act, "boil") or string.find(act, "cook") or string.find(act, "bake") or string.find(act, "fritar") or string.find(act, "ferver") or string.find(act, "cozinhar") or string.find(act, "assar") then
                 targetStationName = "Basic Stove"
@@ -222,7 +214,7 @@ local function RunFarmCycle(hrp, hum, myId)
         end
         
         if station then
-            WalkToTarget(hrp, hum, station, -3.5)
+            WalkToTarget(hrp, hum, station)
             task.wait(0.5); PressE(); task.wait(1)
             
             local msgBox = PlayerGui:FindFirstChild("MessageBox", true)
@@ -312,7 +304,7 @@ local function RunFarmCycle(hrp, hum, myId)
                 else
                     ticks = ticks + 1
                     if ticks > 150 then 
-                        Log("Sem botões por 15s. Reposicionando...", Color3.fromRGB(200, 200, 200))
+                        Log("Sem botões por 15s. Avançando.", Color3.fromRGB(200, 200, 200))
                         break
                     end
                 end
@@ -338,7 +330,7 @@ function _G.BloxburgChef.Start(foodName)
     local hum = char and char:FindFirstChild("Humanoid")
     if hum then hum.WalkSpeed = 16 end 
     
-    Log("GPS Culinário e Botão Azul Ativos", Color3.fromRGB(100, 200, 255))
+    Log("GPS Culinário e Câmera Fixa Ativos", Color3.fromRGB(100, 200, 255))
     Log("=== FARM INICIADO: " .. selectedFood .. " ===", Color3.fromRGB(50, 255, 50))
     
     task.spawn(function()
