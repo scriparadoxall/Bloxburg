@@ -26,10 +26,10 @@ local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
     local targetPos = targetCF.Position
     local standPos = (targetCF * CFrame.new(0, 0, distanceOffset)).Position
     local finalPos = Vector3.new(standPos.X, hrp.Position.Y, standPos.Z)
-    
+
     Log("Caminhando...", Color3.fromRGB(200, 200, 200))
     humanoid:MoveTo(finalPos)
-    
+
     local arrived = false
     local timeout = 0
     local camConnection = RunService.RenderStepped:Connect(function()
@@ -40,7 +40,7 @@ local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
             arrived = true
         end
     end)
-    
+
     while not arrived and timeout < 100 do
         humanoid:MoveTo(finalPos) 
         timeout = timeout + 1
@@ -48,7 +48,7 @@ local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
     end
     camConnection:Disconnect()
     humanoid:MoveTo(hrp.Position) 
-    
+
     hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
     Camera.CameraType = Enum.CameraType.Custom
     Camera.CFrame = CFrame.lookAt(hrp.Position - (hrp.CFrame.LookVector * 5) + Vector3.new(0, 3, 0), targetPos)
@@ -83,11 +83,11 @@ local function RunFarmCycle(hrp, hum, myId)
             if d < dist then dist = d; closestFridge = item end
         end
     end
-    
+
     if closestFridge then
         WalkToTarget(hrp, hum, closestFridge, -3.5)
         task.wait(0.5); PressE()
-        
+
         local interactUI = PlayerGui:WaitForChild("_interactUI", 5)
         if interactUI then
             for _, el in pairs(interactUI:GetDescendants()) do
@@ -108,7 +108,7 @@ local function RunFarmCycle(hrp, hum, myId)
 
     local targetStationName = "Basic Stove"
     local finished = false
-    
+
     while isRunning and currentMacroId == myId and not finished do
         local station = nil; local sDist = math.huge
         for _, item in pairs(workspace:WaitForChild("Plots"):GetDescendants()) do
@@ -117,11 +117,11 @@ local function RunFarmCycle(hrp, hum, myId)
                 if d < sDist then sDist = d; station = item end
             end
         end
-        
+
         if station then
             WalkToTarget(hrp, hum, station, -3.5)
             task.wait(0.5); PressE(); task.wait(1)
-            
+
             local msgBox = PlayerGui:FindFirstChild("MessageBox", true)
             if msgBox and msgBox.Visible then
                 ForceClick(msgBox:FindFirstChild("ButtonFrame"):FindFirstChildWhichIsA("GuiButton", true))
@@ -129,7 +129,7 @@ local function RunFarmCycle(hrp, hum, myId)
                 Log("Jogo pediu Balcão! Trocando rota...", Color3.fromRGB(255, 200, 100))
                 continue
             end
-            
+
             local acted = false
             local interact = PlayerGui:FindFirstChild("_interactUI")
             if interact then
@@ -146,18 +146,26 @@ local function RunFarmCycle(hrp, hum, myId)
                     end
                 end
             end
-            
+
             local ticks = 0
             while ticks < 400 do
                 if not isRunning or currentMacroId ~= myId then return false end
                 local floating = PlayerGui:FindFirstChild("FloatingGui")
                 local btn = floating and floating:FindFirstChild("DefaultButton", true)
+                
                 if btn and btn.Visible then
                     local letter = nil
+                    -- CORREÇÃO APLICADA AQUI ABAIXO:
                     for _, c in pairs(btn:GetDescendants()) do
-                        local match = string.match(c.Text, "^%s*([A-Za-z])%s*$")
-                        if c:IsA("TextLabel") and match then letter = string.upper(match) break end
+                        if c:IsA("TextLabel") then
+                            local match = string.match(c.Text, "^%s*([A-Za-z])%s*$")
+                            if match then 
+                                letter = string.upper(match) 
+                                break 
+                            end
+                        end
                     end
+                    
                     if letter and letter ~= "E" then
                         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode[letter], false, game)
                         task.wait(0.05); VirtualInputManager:SendKeyEvent(false, Enum.KeyCode[letter], false, game)
@@ -182,13 +190,13 @@ function _G.BloxburgChef.Start(foodName)
     isRunning = true
     currentMacroId = currentMacroId + 1
     local myId = currentMacroId
-    
+
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChild("Humanoid")
     if hum then hum.WalkSpeed = 0; hum.JumpPower = 0 end
-    
+
     Log("=== FARM INICIADO: " .. selectedFood .. " ===", Color3.fromRGB(50, 255, 50))
-    
+
     task.spawn(function()
         local hrp = char and char:WaitForChild("HumanoidRootPart")
         while isRunning and currentMacroId == myId do
@@ -201,11 +209,11 @@ end
 function _G.BloxburgChef.Stop()
     isRunning = false
     currentMacroId = currentMacroId + 1
-    
+
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChild("Humanoid")
     if hum then hum.WalkSpeed = 16; hum.JumpPower = 50 end
     Camera.CameraType = Enum.CameraType.Custom
-    
+
     Log("=== FARM PARADO ===", Color3.fromRGB(255, 100, 100))
 end
