@@ -1,207 +1,365 @@
-local CoreGui = game:GetService("CoreGui")
-local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
+local RunService = game:GetService("RunService")
 
--- === 1. CARREGAR O CÉREBRO (BACK-END) DO GITHUB ===
-local backendURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/BloxburgFood?t=" .. tostring(tick())
-local code = game:HttpGet(backendURL)
-local loadFunc, loadErr = loadstring(code)
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local Camera = workspace.CurrentCamera
 
-if loadFunc then
-    loadFunc()
-else
-    warn("ERRO CRÍTICO NO CÓDIGO DA COMIDA: " .. tostring(loadErr))
-    return
+_G.BloxburgChef = {}
+local isRunning = false
+local currentMacroId = 0
+local selectedFood = "Hot Dogs"
+
+-- Dicionário Bilíngue de Ações de Cozinhar
+local validActions = {
+    "fry", "bake", "cook", "prepare", "stir", "mix", "chop", 
+    "cut", "pour", "form", "garnish", "boil", "add", "blend",
+    "fritar", "assar", "cozinhar", "preparar", "mexer", "misturar", "cortar",
+    "picar", "despejar", "formar", "modelar", "decorar", "guarnecer", "ferver", 
+    "adicionar", "bater"
+}
+
+-- O SEGREDO DO "EAT": Quando aparecer isso, o prato ACABOU e ele recomeça
+local finishedActions = {
+    "eat", "place", "take portion", "store",
+    "comer", "colocar", "pegar porção", "guardar"
+}
+
+-- Sistema de Logs
+local function Log(texto, cor)
+    if _G.BloxburgChef_AddLog then
+        _G.BloxburgChef_AddLog(texto, cor)
+    else
+        print("[Chef] " .. texto)
+    end
 end
 
-if not _G.BloxburgChef then return end
+-- === MOVIMENTAÇÃO E CÂMERA CINEMATOGRÁFICA ===
+local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
+    local targetCF = targetInstance:IsA("Model") and targetInstance:GetPivot() or targetInstance.CFrame
+    local targetPos = targetCF.Position
+    local standPos = (targetCF * CFrame.new(0, 0, distanceOffset)).Position
+    local finalPos = Vector3.new(standPos.X, hrp.Position.Y, standPos.Z)
+    
+    Log("Indo para o objeto...", Color3.fromRGB(200, 200, 200))
+    humanoid.WalkSpeed = 16
+    humanoid:MoveTo(finalPos)
+    
+    local arrived = false
+    local timeout = 0
+    
+    -- Câmera gira suavemente enquanto o boneco anda
+    local camConnection = RunService.RenderStepped:Connect(function()
+        if (hrp.Position - finalPos).Magnitude > 1.5 then
+            local backPos = hrp.Position - (hrp.CFrame.LookVector * 6) + Vector3.new(0, 4, 0)
+            Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(backPos, targetPos), 0.1)
+        else
+            arrived = true
+        end
+    end)
+    
+    while not arrived and timeout < 100 do
+        humanoid:MoveTo(finalPos) 
+        timeout = timeout + 1
+        task.wait(0.1)
+    end
+    
+    camConnection:Disconnect()
+    humanoid:MoveTo(hrp.Position) -- Freio exato
+    
+    -- Vira o boneco de frente para o fogão/geladeira
+    hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
+    
+    -- Trava a câmera nas costas olhando para o objeto
+    Camera.CameraType = Enum.CameraType.Custom
+    local finalCamPos = hrp.Position - (hrp.CFrame.LookVector * 5) + Vector3.new(0, 3, 0)
+    Camera.CFrame = CFrame.lookAt(finalCamPos, targetPos)
+end
 
--- === SISTEMA ANTI-DUPLICAÇÃO GERAL ===
-pcall(function() if CoreGui:FindFirstChild("Scriparadoxall") then CoreGui.Scriparadoxall:Destroy() end end)
-pcall(function() if Players.LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("Scriparadoxall") then Players.LocalPlayer.PlayerGui.Scriparadoxall:Destroy() end end)
-pcall(function() if CoreGui:FindFirstChild("ScriparadoxWarning") then CoreGui.ScriparadoxWarning:Destroy() end end)
-pcall(function() if Players.LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("ScriparadoxWarning") then Players.LocalPlayer.PlayerGui.ScriparadoxWarning:Destroy() end end)
+local function PressE()
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+    task.wait(0.05)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+end
 
--- Verifica se o usuário já marcou "Never show again"
-local hideWarning = false
-pcall(function()
-    if isfile and isfile("Scriparadoxall_Warning.txt") then
-        if readfile("Scriparadoxall_Warning.txt") == "true" then
-            hideWarning = true
+local function ForceClick(element)
+    if not element or element.AbsoluteSize.X == 0 then return end
+    pcall(function()
+        if element.MouseButton1Click then for _, conn in pairs(getconnections(element.MouseButton1Click)) do conn:Fire() end end
+        if element.Activated then for _, conn in pairs(getconnections(element.Activated)) do conn:Fire() end end
+        if element.InputBegan then for _, conn in pairs(getconnections(element.InputBegan)) do conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin}) end end
+        if element.InputEnded then for _, conn in pairs(getconnections(element.InputEnded)) do conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.End}) end end
+    end)
+    local center = element.AbsolutePosition + (element.AbsoluteSize / 2)
+    local inset = GuiService:GetGuiInset()
+    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + inset.Y, 0, true, game, 1)
+    task.wait(0.05)
+    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + inset.Y, 0, false, game, 1)
+end
+
+-- === LOOP PRINCIPAL DE FARM ===
+local function RunFarmCycle(hrp, hum, myId)
+    -- ==========================================
+    -- 1. GELADEIRA
+    -- ==========================================
+    local closestFridge = nil; local dist = math.huge
+    for _, item in pairs(workspace:WaitForChild("Plots"):GetDescendants()) do
+        if item.Name == "Icebox Fridge" then
+            local d = (hrp.Position - item:GetPivot().Position).Magnitude
+            if d < dist then dist = d; closestFridge = item end
         end
     end
-end)
+    
+    if closestFridge then
+        WalkToTarget(hrp, hum, closestFridge, -3.5)
+        task.wait(0.8); PressE()
+        
+        local interactUI = PlayerGui:WaitForChild("_interactUI", 5)
+        if not interactUI then return false end
 
--- === FUNÇÃO PARA CARREGAR O HUB PRINCIPAL ===
-local function LoadMainHub()
-    local ScriparadoxallUI = Instance.new("ScreenGui")
-    ScriparadoxallUI.Name = "Scriparadoxall"
-    ScriparadoxallUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    local successUI = pcall(function() ScriparadoxallUI.Parent = CoreGui end)
-    if not successUI then ScriparadoxallUI.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
+        local takeIngBtn = nil
+        for i = 1, 30 do 
+            if not isRunning or currentMacroId ~= myId then return false end
+            for _, el in pairs(interactUI:GetDescendants()) do
+                if el:IsA("TextLabel") then
+                    local txt = el.Text:lower()
+                    if txt == "take ingredients" or txt == "pegar ingredientes" then 
+                        takeIngBtn = el.Parent; break 
+                    end
+                end
+            end
+            if takeIngBtn then break end; task.wait(0.1)
+        end
 
-    local MainFrame = Instance.new("Frame", ScriparadoxallUI)
-    MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    MainFrame.Position = UDim2.new(0.5, -275, 0.5, -125)
-    MainFrame.Size = UDim2.new(0, 550, 0, 250)
-    MainFrame.ClipsDescendants = false 
-    MainFrame.Active = true
-    Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
+        if not takeIngBtn then return false end
 
-    local dragging, dragInput, dragStart, startPos
-    MainFrame.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = true; dragStart = input.Position; startPos = MainFrame.Position end end)
-    game:GetService("UserInputService").InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + (input.Position - dragStart).X, startPos.Y.Scale, startPos.Y.Offset + (input.Position - dragStart).Y) end end)
-    MainFrame.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
+        local listMenu = nil
+        for tentativa = 1, 5 do
+            if not isRunning or currentMacroId ~= myId then return false end
+            ForceClick(takeIngBtn)
+            task.wait(1.2)
+            listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)", true)
+            if listMenu and listMenu.AbsoluteSize.Y > 0 then break end
+        end
 
-    local Title = Instance.new("TextLabel", MainFrame)
-    Title.BackgroundTransparency = 1; Title.Size = UDim2.new(1, -40, 0, 40); Title.Position = UDim2.new(0, 15, 0, 0)
-    Title.Font = Enum.Font.GothamBold; Title.Text = "Scriparadoxall Hub"; Title.TextColor3 = Color3.fromRGB(255, 255, 255); Title.TextSize = 18; Title.TextXAlignment = Enum.TextXAlignment.Left
-
-    local Divider = Instance.new("Frame", MainFrame)
-    Divider.BackgroundColor3 = Color3.fromRGB(60, 60, 60); Divider.BorderSizePixel = 0; Divider.Position = UDim2.new(0, 0, 0, 40); Divider.Size = UDim2.new(1, 0, 0, 1)
-
-    local HideButton = Instance.new("TextButton", MainFrame)
-    HideButton.BackgroundTransparency = 1; HideButton.Position = UDim2.new(1, -40, 0, 0); HideButton.Size = UDim2.new(0, 40, 0, 40)
-    HideButton.Font = Enum.Font.GothamBold; HideButton.Text = "-"; HideButton.TextColor3 = Color3.fromRGB(255, 255, 255); HideButton.TextSize = 24
-
-    local OpenButton = Instance.new("TextButton", ScriparadoxallUI)
-    OpenButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30); OpenButton.Position = UDim2.new(0, 20, 0.5, -25); OpenButton.Size = UDim2.new(0, 50, 0, 50)
-    OpenButton.Font = Enum.Font.GothamBold; OpenButton.Text = "S"; OpenButton.TextColor3 = Color3.fromRGB(255, 255, 255); OpenButton.Visible = false
-    Instance.new("UICorner", OpenButton).CornerRadius = UDim.new(1, 0)
-
-    local tweenInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-    local function MinimizeHub()
-        if not MainFrame.Visible then return end
-        TweenService:Create(MainFrame, tweenInfo, {Size = UDim2.new(0, 550, 0, 0), BackgroundTransparency = 1}):Play()
-        for _, child in pairs(MainFrame:GetChildren()) do if child:IsA("GuiObject") and not child:IsA("UICorner") then child.Visible = false end end
-        MainFrame.Visible = false; OpenButton.Visible = true
-        TweenService:Create(OpenButton, tweenInfo, {Size = UDim2.new(0, 50, 0, 50)}):Play()
-    end
-    HideButton.MouseButton1Click:Connect(MinimizeHub)
-    OpenButton.MouseButton1Click:Connect(function()
-        TweenService:Create(OpenButton, tweenInfo, {Size = UDim2.new(0, 0, 0, 0)}):Play()
-        OpenButton.Visible = false; MainFrame.Visible = true; MainFrame.BackgroundTransparency = 0
-        TweenService:Create(MainFrame, tweenInfo, {Size = UDim2.new(0, 550, 0, 250)}):Play()
-        for _, child in pairs(MainFrame:GetChildren()) do if child:IsA("GuiObject") then child.Visible = true end end
-    end)
-
-    local LogPanel = Instance.new("ScrollingFrame", MainFrame)
-    LogPanel.BackgroundColor3 = Color3.fromRGB(12, 12, 12); LogPanel.Position = UDim2.new(0, 190, 0, 50); LogPanel.Size = UDim2.new(0, 340, 0, 180); LogPanel.ScrollBarThickness = 4; LogPanel.BorderSizePixel = 0
-    Instance.new("UICorner", LogPanel).CornerRadius = UDim.new(0, 6)
-    local LogLayout = Instance.new("UIListLayout", LogPanel); LogLayout.SortOrder = Enum.SortOrder.LayoutOrder; LogLayout.Padding = UDim.new(0, 2)
-
-    local logCount = 0
-    _G.BloxburgChef_AddLog = function(texto, cor)
-        logCount = logCount + 1
-        local newLog = Instance.new("TextLabel", LogPanel)
-        newLog.BackgroundTransparency = 1; newLog.Size = UDim2.new(1, -10, 0, 16); newLog.Font = Enum.Font.Code; newLog.Text = "[" .. os.date("%H:%M") .. "] " .. texto; newLog.TextColor3 = cor or Color3.fromRGB(200, 200, 200); newLog.TextSize = 11; newLog.TextXAlignment = Enum.TextXAlignment.Left; newLog.LayoutOrder = logCount
-        LogPanel.CanvasSize = UDim2.new(0, 0, 0, LogLayout.AbsoluteContentSize.Y)
-        LogPanel.CanvasPosition = Vector2.new(0, LogLayout.AbsoluteContentSize.Y)
-    end
-    _G.BloxburgChef_AddLog("Módulos carregados com sucesso!", Color3.fromRGB(50, 255, 255))
-
-    local selectedFoodUI = "Hot Dogs"
-    local FoodBtn = Instance.new("TextButton", MainFrame)
-    FoodBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); FoodBtn.Position = UDim2.new(0, 15, 0, 50); FoodBtn.Size = UDim2.new(0, 160, 0, 35)
-    FoodBtn.Font = Enum.Font.GothamSemibold; FoodBtn.Text = "🍕 " .. selectedFoodUI; FoodBtn.TextColor3 = Color3.fromRGB(255, 255, 255); FoodBtn.TextSize = 12
-    Instance.new("UICorner", FoodBtn).CornerRadius = UDim.new(0, 6)
-
-    local FoodListPanel = Instance.new("ScrollingFrame", MainFrame)
-    FoodListPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 25); FoodListPanel.Position = UDim2.new(0, 15, 0, 90); FoodListPanel.Size = UDim2.new(0, 160, 0, 145); FoodListPanel.ScrollBarThickness = 4; FoodListPanel.ZIndex = 10; FoodListPanel.Visible = false
-    Instance.new("UICorner", FoodListPanel).CornerRadius = UDim.new(0, 6)
-    local FoodLayout = Instance.new("UIListLayout", FoodListPanel); FoodLayout.Padding = UDim.new(0, 2)
-
-    local listaComidas = {"Baby Food", "Garden Salad", "Hot Dogs", "Corn on the Cob", "Vegetable Soup", "Fruit Salad", "Mini Corndogs", "Chicken Nuggets", "Rice Pudding", "Loaf of Bread", "Mandazi", "Birthday Cupcakes"}
-    for _, comida in ipairs(listaComidas) do
-        local btn = Instance.new("TextButton", FoodListPanel)
-        btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35); btn.Size = UDim2.new(1, 0, 0, 30); btn.ZIndex = 11; btn.Font = Enum.Font.Gotham; btn.Text = comida; btn.TextColor3 = Color3.fromRGB(200, 200, 200); btn.TextSize = 12
-        btn.MouseButton1Click:Connect(function() selectedFoodUI = comida; FoodBtn.Text = "🍕 " .. selectedFoodUI; FoodListPanel.Visible = false end)
-    end
-    FoodLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() FoodListPanel.CanvasSize = UDim2.new(0, 0, 0, FoodLayout.AbsoluteContentSize.Y) end)
-    FoodBtn.MouseButton1Click:Connect(function() FoodListPanel.Visible = not FoodListPanel.Visible end)
-
-    local FarmBtn = Instance.new("TextButton", MainFrame)
-    FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40); FarmBtn.Position = UDim2.new(0, 15, 0, 95); FarmBtn.Size = UDim2.new(0, 160, 0, 40)
-    FarmBtn.Font = Enum.Font.GothamBold; FarmBtn.Text = "▶ Iniciar Farm"; FarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255); FarmBtn.TextSize = 14
-    Instance.new("UICorner", FarmBtn).CornerRadius = UDim.new(0, 6)
-
-    local isUIActive = false
-    FarmBtn.MouseButton1Click:Connect(function()
-        if isUIActive then
-            isUIActive = false
-            FarmBtn.Text = "▶ Iniciar Farm"
-            FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
-            _G.BloxburgChef.Stop()
+        if not listMenu or listMenu.AbsoluteSize.Y == 0 then return false end
+        
+        local targetFoodBtn = nil
+        for i = 1, 50 do 
+            if not isRunning or currentMacroId ~= myId then return false end
+            targetFoodBtn = listMenu:FindFirstChild(selectedFood .. "_Button", true)
+            if targetFoodBtn then break end; task.wait(0.1)
+        end
+        
+        if targetFoodBtn then 
+            local takeBtn = targetFoodBtn:FindFirstChild("Take")
+            if takeBtn then
+                ForceClick(takeBtn)
+                local frame = listMenu:FindFirstChild("Frame")
+                local masterEvent = frame and frame:FindFirstChild("Event")
+                if masterEvent and masterEvent:IsA("BindableEvent") then pcall(function() masterEvent:Fire(targetFoodBtn) end) end
+            end
         else
-            isUIActive = true
-            FarmBtn.Text = "🛑 Parar Farm"
-            FarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-            FoodListPanel.Visible = false
-            MinimizeHub()
-            _G.BloxburgChef.Start(selectedFoodUI)
+            Log("ERRO: Comida não achada.", Color3.fromRGB(255, 50, 50)); return false
+        end
+    end
+
+    -- Confirma se pegou a comida
+    local hasFood = false
+    local equippedBtn = nil
+    for w = 1, 40 do
+        if not isRunning or currentMacroId ~= myId then return false end
+        equippedBtn = PlayerGui:FindFirstChild("EquippedButton", true)
+        if equippedBtn and equippedBtn.Visible then
+            hasFood = true
+            Log("Comida em mãos!", Color3.fromRGB(50, 255, 50))
+            break
+        end
+        task.wait(0.1)
+    end
+
+    if not hasFood then return false end
+
+    -- ==========================================
+    -- 2. ROTAS E ESTAÇÕES (O CÉREBRO)
+    -- ==========================================
+    local finished = false
+    
+    while isRunning and currentMacroId == myId and not finished do
+        -- LÊ O RÓTULO PARA DECIDIR O DESTINO
+        local targetStationName = "Basic Counter"
+        local actionLbl = equippedBtn:FindFirstChild("ActionLabel")
+        if actionLbl then
+            local act = actionLbl.Text:lower()
+            
+            -- LÓGICA DO "EAT" (Se o prato estiver pronto, recomeça o ciclo)
+            if table.find(finishedActions, act) then
+                Log("Apareceu '".. actionLbl.Text .."'! Prato Finalizado!", Color3.fromRGB(50, 255, 50))
+                Log("Reiniciando ciclo para a próxima receita...", Color3.fromRGB(255, 255, 100))
+                finished = true
+                break
+            end
+            
+            Log("GPS: Precisamos " .. actionLbl.Text, Color3.fromRGB(150, 200, 255))
+            
+            if string.find(act, "fry") or string.find(act, "boil") or string.find(act, "cook") or string.find(act, "bake") or string.find(act, "fritar") or string.find(act, "ferver") or string.find(act, "cozinhar") or string.find(act, "assar") then
+                targetStationName = "Basic Stove"
+            else
+                targetStationName = "Basic Counter"
+            end
+        end
+
+        local station = nil; local sDist = math.huge
+        for _, item in pairs(workspace:WaitForChild("Plots"):GetDescendants()) do
+            if item.Name == targetStationName then
+                local d = (hrp.Position - item:GetPivot().Position).Magnitude
+                if d < sDist then sDist = d; station = item end
+            end
+        end
+        
+        if station then
+            -- Boneco anda, se vira de frente para a estação e câmera foca nela
+            WalkToTarget(hrp, hum, station, -3.5)
+            task.wait(0.5); PressE(); task.wait(1)
+            
+            local msgBox = PlayerGui:FindFirstChild("MessageBox", true)
+            if msgBox and msgBox.Visible then
+                ForceClick(msgBox:FindFirstChild("ButtonFrame"):FindFirstChildWhichIsA("GuiButton", true))
+                Log("Aviso de estação ignorado.", Color3.fromRGB(255, 200, 100))
+                continue
+            end
+            
+            -- VERIFICA SE ESTÁ SUJO
+            local interact = PlayerGui:FindFirstChild("_interactUI")
+            if interact then
+                for _, el in pairs(interact:GetDescendants()) do
+                    if el:IsA("TextLabel") and (el.Text:lower() == "clean" or el.Text:lower() == "limpar") then
+                        Log("Limpando sujeira...", Color3.fromRGB(255, 150, 50))
+                        ForceClick(el.Parent); task.wait(9)
+                        Log("Limpo! Recomeçando prato...", Color3.fromRGB(150, 255, 150))
+                        return true
+                    end
+                end
+            end
+            
+            -- ==========================================
+            -- MINIGAME DE COZINHAR
+            -- ==========================================
+            local ticks = 0
+            local maxRecipeTicks = 1200 
+            local recipeTickCount = 0
+
+            while recipeTickCount < maxRecipeTicks do
+                if not isRunning or currentMacroId ~= myId then return false end
+                local acted = false
+                
+                -- A) TELA CENTRAL (Teclado)
+                local floating = PlayerGui:FindFirstChild("FloatingGui")
+                if floating then
+                    for _, btn in pairs(floating:GetDescendants()) do
+                        if btn.Name == "DefaultButton" and btn:IsA("GuiButton") and btn.Visible then
+                            local letter = nil
+                            for _, c in pairs(btn:GetDescendants()) do
+                                local match = string.match(c.Text, "^%s*([A-Za-z])%s*$")
+                                if c:IsA("TextLabel") and match then letter = string.upper(match) break end
+                            end
+                            
+                            if letter and letter ~= "E" then
+                                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode[letter], false, game)
+                                task.wait(0.05); VirtualInputManager:SendKeyEvent(false, Enum.KeyCode[letter], false, game)
+                            else 
+                                ForceClick(btn) 
+                            end
+                            acted = true
+                        end
+                    end
+                end
+                
+                -- B) O BOTÃO AZUL
+                if equippedBtn and equippedBtn.Visible then
+                    local currentActionLbl = equippedBtn:FindFirstChild("ActionLabel")
+                    if currentActionLbl then
+                        local currentAction = currentActionLbl.Text:lower()
+                        
+                        -- LÓGICA DO "EAT" AQUI TAMBÉM (Quebra o minigame imediatamente)
+                        if table.find(finishedActions, currentAction) then
+                            Log("Pronto para '".. currentActionLbl.Text .."'! Recomeçando ciclo.", Color3.fromRGB(50, 255, 50))
+                            finished = true
+                            break
+                        end
+                        
+                        if table.find(validActions, currentAction) then
+                            ForceClick(equippedBtn)
+                            acted = true
+                        end
+                    end
+                end
+                
+                -- C) MÃOZINHAS AZUIS (Backup)
+                local interactUI = PlayerGui:FindFirstChild("_interactUI")
+                if interactUI and not acted then
+                    for _, el in pairs(interactUI:GetDescendants()) do
+                        if el:IsA("TextLabel") and table.find(validActions, el.Text:lower()) then
+                            ForceClick(el.Parent)
+                            acted = true
+                            break
+                        end
+                    end
+                end
+                
+                if acted then
+                    ticks = 0; task.wait(0.4)
+                else
+                    ticks = ticks + 1
+                    if ticks > 150 then 
+                        Log("Sem botões por 15s. Reposicionando...", Color3.fromRGB(200, 200, 200))
+                        break
+                    end
+                end
+                
+                if finished then break end
+                recipeTickCount = recipeTickCount + 1
+                task.wait(0.1)
+            end
+        end
+    end
+    return true
+end
+
+-- === COMANDOS DO HUB ===
+function _G.BloxburgChef.Start(foodName)
+    if isRunning then return end
+    selectedFood = foodName or "Hot Dogs"
+    isRunning = true
+    currentMacroId = currentMacroId + 1
+    local myId = currentMacroId
+    
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChild("Humanoid")
+    if hum then hum.WalkSpeed = 16 end 
+    
+    Log("GPS Culinário e Botão Azul Ativos", Color3.fromRGB(100, 200, 255))
+    Log("=== FARM INICIADO: " .. selectedFood .. " ===", Color3.fromRGB(50, 255, 50))
+    
+    task.spawn(function()
+        local hrp = char and char:WaitForChild("HumanoidRootPart")
+        while isRunning and currentMacroId == myId do
+            RunFarmCycle(hrp, hum, myId)
+            task.wait(1)
         end
     end)
 end
 
--- === TELA DE AVISO (WARNING) ===
-if hideWarning then
-    LoadMainHub()
-else
-    local WarningUI = Instance.new("ScreenGui")
-    WarningUI.Name = "ScriparadoxWarning"
-    WarningUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    pcall(function() WarningUI.Parent = CoreGui end)
-    if not WarningUI.Parent then WarningUI.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
-
-    local WarnFrame = Instance.new("Frame", WarningUI)
-    WarnFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    WarnFrame.Position = UDim2.new(0.5, -225, 0.5, -125)
-    WarnFrame.Size = UDim2.new(0, 450, 0, 250)
-    Instance.new("UICorner", WarnFrame).CornerRadius = UDim.new(0, 8)
-
-    local WarnTitle = Instance.new("TextLabel", WarnFrame)
-    WarnTitle.BackgroundTransparency = 1; WarnTitle.Size = UDim2.new(1, 0, 0, 40)
-    WarnTitle.Font = Enum.Font.GothamBold; WarnTitle.Text = "⚠️ IMPORTANT WARNING ⚠️"
-    WarnTitle.TextColor3 = Color3.fromRGB(255, 80, 80); WarnTitle.TextSize = 18
-
-    local WarnText = Instance.new("TextLabel", WarnFrame)
-    WarnText.BackgroundTransparency = 1; WarnText.Position = UDim2.new(0, 20, 0, 45); WarnText.Size = UDim2.new(1, -40, 0, 120)
-    WarnText.Font = Enum.Font.Gotham; WarnText.TextColor3 = Color3.fromRGB(220, 220, 220); WarnText.TextSize = 14; WarnText.TextWrapped = true
-    WarnText.Text = "Our bot operates 100% like a real user, without teleports or suspicious movements. This requires a highly precise reading of the game's interface.\n\nWhile our script can read some other languages, it may contain bugs. To avoid any inconvenience, PLEASE KEEP YOUR GAME LANGUAGE IN ENGLISH."
-
-    local CheckboxBtn = Instance.new("TextButton", WarnFrame)
-    CheckboxBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); CheckboxBtn.Position = UDim2.new(0, 20, 1, -60); CheckboxBtn.Size = UDim2.new(0, 20, 0, 20)
-    CheckboxBtn.Font = Enum.Font.GothamBold; CheckboxBtn.Text = ""; CheckboxBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Instance.new("UICorner", CheckboxBtn).CornerRadius = UDim.new(0, 4)
-
-    local CheckboxLabel = Instance.new("TextLabel", WarnFrame)
-    CheckboxLabel.BackgroundTransparency = 1; CheckboxLabel.Position = UDim2.new(0, 50, 1, -60); CheckboxLabel.Size = UDim2.new(0, 200, 0, 20)
-    CheckboxLabel.Font = Enum.Font.Gotham; CheckboxLabel.Text = "Don't show this again"; CheckboxLabel.TextColor3 = Color3.fromRGB(200, 200, 200); CheckboxLabel.TextSize = 13; CheckboxLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-    local isChecked = false
-    CheckboxBtn.MouseButton1Click:Connect(function()
-        isChecked = not isChecked
-        if isChecked then
-            CheckboxBtn.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
-            CheckboxBtn.Text = "X"
-        else
-            CheckboxBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-            CheckboxBtn.Text = ""
-        end
-    end)
-
-    local ContinueBtn = Instance.new("TextButton", WarnFrame)
-    ContinueBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 200); ContinueBtn.Position = UDim2.new(1, -120, 1, -65); ContinueBtn.Size = UDim2.new(0, 100, 0, 30)
-    ContinueBtn.Font = Enum.Font.GothamBold; ContinueBtn.Text = "I Understand"; ContinueBtn.TextColor3 = Color3.fromRGB(255, 255, 255); ContinueBtn.TextSize = 14
-    Instance.new("UICorner", ContinueBtn).CornerRadius = UDim.new(0, 6)
-
-    ContinueBtn.MouseButton1Click:Connect(function()
-        if isChecked then
-            pcall(function()
-                if writefile then writefile("Scriparadoxall_Warning.txt", "true") end
-            end)
-        end
-        WarningUI:Destroy()
-        LoadMainHub()
-    end)
+function _G.BloxburgChef.Stop()
+    isRunning = false
+    currentMacroId = currentMacroId + 1
+    
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChild("Humanoid")
+    if hum then hum.WalkSpeed = 16; hum.JumpPower = 50 end
+    Camera.CameraType = Enum.CameraType.Custom
+    
+    Log("=== FARM PARADO ===", Color3.fromRGB(255, 100, 100))
 end
