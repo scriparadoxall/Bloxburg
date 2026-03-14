@@ -1,8 +1,10 @@
 local Players = game:GetService("Players")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local TweenService = game:GetService("TweenService")
+local GuiService = game:GetService("GuiService")
 
 local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local Camera = workspace.CurrentCamera
 
 _G.BloxburgChef = {}
@@ -10,14 +12,46 @@ local isRunning = false
 local currentMacroId = 0
 local selectedFood = "Hot Dogs"
 
+-- === DICIONÁRIOS DE AÇÕES ===
+local validActions = {
+    "fry", "bake", "cook", "prepare", "stir", "mix", "chop", 
+    "cut", "pour", "form", "garnish", "boil", "add", "blend",
+    "fritar", "assar", "cozinhar", "preparar", "mexer", "misturar", "cortar",
+    "picar", "despejar", "formar", "modelar", "decorar", "guarnecer", "ferver", 
+    "adicionar", "bater"
+}
+
+local finishedActions = {
+    "eat", "place", "take portion", "store",
+    "comer", "colocar", "pegar porção", "guardar"
+}
+
+local function Log(texto, cor)
+    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog(texto, cor) else print("[Chef] " .. texto) end
+end
+
+-- === CLIQUE FORÇADO ===
+local function ForceClick(element)
+    if not element or not element.Visible then return end
+    pcall(function()
+        if element.MouseButton1Click then for _, conn in pairs(getconnections(element.MouseButton1Click)) do conn:Fire() end end
+        if element.Activated then for _, conn in pairs(getconnections(element.Activated)) do conn:Fire() end end
+        if element.InputBegan then for _, conn in pairs(getconnections(element.InputBegan)) do conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin}) end end
+        if element.InputEnded then for _, conn in pairs(getconnections(element.InputEnded)) do conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.End}) end end
+    end)
+    local center = element.AbsolutePosition + (element.AbsoluteSize / 2)
+    local inset = GuiService:GetGuiInset()
+    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + inset.Y, 0, true, game, 1)
+    task.wait(0.05)
+    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + inset.Y, 0, false, game, 1)
+end
+
 -- === FILTRO DE SEGURANÇA: ENCONTRAR APENAS O SEU LOTE ===
 local function GetMyOwnPlot()
     local plots = workspace:FindFirstChild("Plots")
     if not plots then return nil end
     
-    -- Tenta encontrar o lote que pertence a você
     for _, plot in pairs(plots:GetChildren()) do
-        -- No Bloxburg, o lote costuma ter o nome do jogador ou um atributo de Owner
         if plot:FindFirstChild("Occupant") and plot.Occupant.Value == LocalPlayer.Name then
             return plot
         elseif string.find(plot.Name, LocalPlayer.Name) then
@@ -25,28 +59,20 @@ local function GetMyOwnPlot()
         end
     end
     
-    -- Fallback: Se não achar pelo nome, pega o que o boneco está pisando em cima
     for _, plot in pairs(plots:GetChildren()) do
         if plot:FindFirstChild("House") then
             local pPos = plot:GetPivot().Position
             local charPos = LocalPlayer.Character.HumanoidRootPart.Position
-            if (Vector3.new(pPos.X, 0, pPos.Z) - Vector3.new(charPos.X, 0, charPos.Z)).Magnitude < 50 then
-                return plot
-            end
+            if (Vector3.new(pPos.X, 0, pPos.Z) - Vector3.new(charPos.X, 0, charPos.Z)).Magnitude < 50 then return plot end
         end
     end
     return nil
 end
 
--- === LOCALIZADOR PRECISO (Só olha dentro da sua House -> Counters) ===
 local function FindMyStation(stationName)
     local myPlot = GetMyOwnPlot()
-    if not myPlot then 
-        print("Erro: Não encontrei o seu lote!")
-        return nil 
-    end
+    if not myPlot then return nil end
     
-    -- Caminho exato da sua imagem 25781: Plot -> House -> Counters
     local countersFolder = myPlot:FindFirstChild("House") and myPlot.House:FindFirstChild("Counters")
     if not countersFolder then return nil end
 
@@ -56,29 +82,22 @@ local function FindMyStation(stationName)
     for _, obj in pairs(countersFolder:GetChildren()) do
         if obj.Name == stationName then
             local d = (LocalPlayer.Character.HumanoidRootPart.Position - obj:GetPivot().Position).Magnitude
-            if d < shortestDist then
-                shortestDist = d
-                target = obj
-            end
+            if d < shortestDist then shortestDist = d; target = obj end
         end
     end
     return target
 end
 
--- === AJUSTE DE CÂMERA HUMANA (PARA O FOGÃO) ===
+-- === AJUSTE DE CÂMERA HUMANA ===
 local function AimAtObject(obj)
     local targetPos = obj:GetPivot().Position
-    -- Mira no centro do fogão/bancada para o 'E' aparecer
     local lookTarget = targetPos + Vector3.new(0, -0.5, 0) 
-    
-    local tween = TweenService:Create(Camera, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {
-        CFrame = CFrame.lookAt(Camera.CFrame.Position, lookTarget)
-    })
+    local tween = TweenService:Create(Camera, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {CFrame = CFrame.lookAt(Camera.CFrame.Position, lookTarget)})
     tween:Play()
     task.wait(0.5)
 end
 
--- === MOVIMENTAÇÃO RESTRETA AO LOTE ===
+-- === MOVIMENTAÇÃO RESTRITA AO LOTE ===
 local function MoveToStation(name)
     local station = FindMyStation(name)
     if not station then return false end
@@ -87,7 +106,6 @@ local function MoveToStation(name)
     local hum = LocalPlayer.Character.Humanoid
     local targetPos = station:GetPivot().Position
     
-    -- Posição de paragem calculada
     local dir = (hrp.Position - targetPos).Unit
     local walkPos = targetPos + (dir * 3.2)
     
@@ -95,10 +113,10 @@ local function MoveToStation(name)
     
     local t = 0
     while (hrp.Position - walkPos).Magnitude > 1.5 and t < 60 do
+        if hum.MoveDirection.Magnitude < 0.1 then hum.Jump = true end
         task.wait(0.1); t = t + 1
     end
     
-    -- Vira e foca a visão
     hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
     AimAtObject(station)
     
@@ -109,28 +127,164 @@ local function MoveToStation(name)
     return true
 end
 
--- === START/STOP ===
+-- === LOOP PRINCIPAL DE FARM ===
 function _G.BloxburgChef.Start(food)
+    if isRunning then return end
     selectedFood = food or "Hot Dogs"
     isRunning = true
     currentMacroId = currentMacroId + 1
     local myId = currentMacroId
     
+    Log("Farm Iniciado (Com Validação de Comida)", Color3.fromRGB(50, 255, 50))
+    
     task.spawn(function()
         while isRunning and currentMacroId == myId do
-            -- Agora ele só vai procurar na SUA pasta Counters
-            if MoveToStation("Icebox Fridge") then
-                task.wait(2)
-                -- Lógica do menu aqui...
+            
+            -- ==========================================
+            -- 1. FASE DE PEGAR COMIDA (LOOP DE VALIDAÇÃO)
+            -- ==========================================
+            local hasFood = false
+            
+            while isRunning and currentMacroId == myId and not hasFood do
+                if MoveToStation("Icebox Fridge") then
+                    task.wait(1)
+                    
+                    -- Tenta clicar em "Take Ingredients"
+                    local interactUI = PlayerGui:FindFirstChild("_interactUI")
+                    if interactUI then
+                        for _, el in pairs(interactUI:GetDescendants()) do
+                            if el:IsA("TextLabel") and (el.Text:lower():find("take") or el.Text:lower():find("pegar")) then
+                                ForceClick(el.Parent)
+                                break
+                            end
+                        end
+                    end
+                    
+                    task.wait(1.5)
+                    
+                    -- Tenta clicar na comida na lista
+                    local listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)", true)
+                    if listMenu then
+                        local foodBtn = listMenu:FindFirstChild(selectedFood .. "_Button", true)
+                        if foodBtn then
+                            ForceClick(foodBtn:FindFirstChild("Take"))
+                            local ev = listMenu:FindFirstChild("Frame") and listMenu.Frame:FindFirstChild("Event")
+                            if ev then pcall(function() ev:Fire(foodBtn) end) end
+                        end
+                    end
+                    
+                    task.wait(2.5) -- Espera a animação de tirar da geladeira
+                    
+                    -- VALIDAÇÃO: Lê a mão dele!
+                    local equipped = PlayerGui:FindFirstChild("EquippedButton", true)
+                    if equipped and equipped.Visible then
+                        local actLbl = equipped:FindFirstChild("ActionLabel")
+                        if actLbl then
+                            local act = actLbl.Text:lower()
+                            -- Verifica se a palavra na mão é uma ação de cozinhar
+                            for _, vAct in pairs(validActions) do
+                                if string.find(act, vAct) then
+                                    hasFood = true
+                                    Log("Comida confirmada nas mãos!", Color3.fromRGB(50, 255, 50))
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    
+                    if not hasFood then
+                        Log("Falha ao pegar comida. Tentando novamente...", Color3.fromRGB(255, 100, 100))
+                        task.wait(1)
+                    end
+                else
+                    Log("Não achei a geladeira no seu lote!", Color3.fromRGB(255, 50, 50))
+                    task.wait(3)
+                end
             end
             
-            task.wait(1)
+            -- ==========================================
+            -- 2. FASE DE COZINHAR (ESTAÇÕES)
+            -- ==========================================
+            local finished = false
             
-            -- Vai para o fogão/bancada conforme o que estiver na mão
-            -- Mas sempre dentro do SEU lote!
-            MoveToStation("Basic Stove")
-            
-            task.wait(2)
+            while isRunning and currentMacroId == myId and not finished do
+                local equipped = PlayerGui:FindFirstChild("EquippedButton", true)
+                if equipped and equipped.Visible then
+                    local actLbl = equipped:FindFirstChild("ActionLabel")
+                    if actLbl then
+                        local act = actLbl.Text:lower()
+                        
+                        if table.find(finishedActions, act) then
+                            Log("Prato Finalizado!", Color3.fromRGB(50, 255, 50))
+                            finished = true
+                            break
+                        end
+                        
+                        -- Descobre se precisa de Fogão ou Balcão
+                        local isStove = string.find(act, "fry") or string.find(act, "boil") or string.find(act, "cook") or string.find(act, "bake") or string.find(act, "fritar") or string.find(act, "ferver") or string.find(act, "cozinhar") or string.find(act, "assar")
+                        local targetName = isStove and "Basic Stove" or "Basic Counter"
+                        
+                        Log("GPS: Indo para " .. targetName .. " (" .. actLbl.Text .. ")", Color3.fromRGB(150, 200, 255))
+                        
+                        if MoveToStation(targetName) then
+                            task.wait(0.5)
+                            
+                            -- LIMPEZA DE SUJEIRA
+                            local interactUI = PlayerGui:FindFirstChild("_interactUI")
+                            if interactUI then
+                                for _, el in pairs(interactUI:GetDescendants()) do
+                                    if el:IsA("TextLabel") and (el.Text:lower() == "clean" or el.Text:lower() == "limpar") then
+                                        Log("Limpando sujeira...", Color3.fromRGB(255, 150, 50))
+                                        ForceClick(el.Parent)
+                                        task.wait(9)
+                                        break
+                                    end
+                                end
+                            end
+                            
+                            -- MINIGAME DE CLIQUE
+                            local stageStart = tick()
+                            while tick() - stageStart < 20 do
+                                if not isRunning or currentMacroId ~= myId then break end
+                                
+                                local float = PlayerGui:FindFirstChild("FloatingGui")
+                                if float then
+                                    for _, b in pairs(float:GetDescendants()) do
+                                        if b:IsA("GuiButton") and b.Visible then
+                                            local letra = nil
+                                            for _, c in pairs(b:GetDescendants()) do
+                                                if c:IsA("TextLabel") and string.match(c.Text, "^%s*([A-Za-z])%s*$") then
+                                                    letra = string.upper(string.match(c.Text, "^%s*([A-Za-z])%s*$"))
+                                                    break
+                                                end
+                                            end
+                                            if letra and letra ~= "E" then
+                                                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode[letra], false, game)
+                                                task.wait(0.05)
+                                                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode[letra], false, game)
+                                            else
+                                                ForceClick(b)
+                                            end
+                                        end
+                                    end
+                                end
+                                
+                                -- Se o botão azul mudar para Eat/Place no meio do minigame, sai rápido
+                                if table.find(finishedActions, actLbl.Text:lower()) then
+                                    finished = true
+                                    break
+                                end
+                                
+                                -- Se o botão azul mudou de palavra (ex: Mix virou Bake), avança para a próxima estação
+                                if actLbl.Text:lower() ~= act then break end
+                                
+                                task.wait(0.2)
+                            end
+                        end
+                    end
+                end
+                task.wait(0.5)
+            end
         end
     end)
 end
