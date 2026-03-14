@@ -1,0 +1,218 @@
+local Players = game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local Camera = workspace.CurrentCamera
+
+-- Cria a tabela global que o Hub vai acessar
+getgenv().BloxburgChef = {}
+local isRunning = false
+local currentMacroId = 0
+local selectedFood = "Hot Dogs"
+
+-- Função para enviar logs para o Hub (se o Hub estiver aberto)
+local function Log(texto, cor)
+    if getgenv().BloxburgChef_AddLog then
+        getgenv().BloxburgChef_AddLog(texto, cor)
+    else
+        print("[Chef] " .. texto)
+    end
+end
+
+-- === LÓGICA DE MOVIMENTAÇÃO ===
+local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
+    local targetCF = targetInstance:IsA("Model") and targetInstance:GetPivot() or targetInstance.CFrame
+    local targetPos = targetCF.Position
+    local standPos = (targetCF * CFrame.new(0, 0, distanceOffset)).Position
+    local finalPos = Vector3.new(standPos.X, hrp.Position.Y, standPos.Z)
+    
+    Log("Caminhando...", Color3.fromRGB(200, 200, 200))
+    humanoid:MoveTo(finalPos)
+    
+    local arrived = false
+    local timeout = 0
+    local camConnection = RunService.RenderStepped:Connect(function()
+        if (hrp.Position - finalPos).Magnitude > 1.5 then
+            local backPos = hrp.Position - (hrp.CFrame.LookVector * 7) + Vector3.new(0, 5, 0)
+            Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(backPos, hrp.Position + hrp.CFrame.LookVector * 5), 0.1)
+        else
+            arrived = true
+        end
+    end)
+    
+    while not arrived and timeout < 100 do
+        humanoid:MoveTo(finalPos) 
+        timeout = timeout + 1
+        task.wait(0.1)
+    end
+    camConnection:Disconnect()
+    humanoid:MoveTo(hrp.Position) -- Freio
+    
+    hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
+    Camera.CameraType = Enum.CameraType.Custom
+    Camera.CFrame = CFrame.lookAt(hrp.Position - (hrp.CFrame.LookVector * 5) + Vector3.new(0, 3, 0), targetPos)
+end
+
+local function PressE()
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+    task.wait(0.05)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+end
+
+local function ForceClick(element)
+    if not element then return end
+    pcall(function()
+        if element.MouseButton1Click then for _, conn in pairs(getconnections(element.MouseButton1Click)) do conn:Fire() end end
+        if element.Activated then for _, conn in pairs(getconnections(element.Activated)) do conn:Fire() end end
+        if element.InputBegan then for _, conn in pairs(getconnections(element.InputBegan)) do conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin}) end end
+        if element.InputEnded then for _, conn in pairs(getconnections(element.InputEnded)) do conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.End}) end end
+    end)
+    local center = element.AbsolutePosition + (element.AbsoluteSize / 2)
+    local inset = GuiService:GetGuiInset()
+    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + inset.Y, 0, true, game, 1)
+    task.wait(0.05)
+    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + inset.Y, 0, false, game, 1)
+end
+
+-- === LOOP PRINCIPAL DE FARM ===
+local function RunFarmCycle(hrp, hum, myId)
+    -- 1. GELADEIRA
+    local closestFridge = nil; local dist = math.huge
+    for _, item in pairs(workspace:WaitForChild("Plots"):GetDescendants()) do
+        if item.Name == "Icebox Fridge" then
+            local d = (hrp.Position - item:GetPivot().Position).Magnitude
+            if d < dist then dist = d; closestFridge = item end
+        end
+    end
+    
+    if closestFridge then
+        WalkToTarget(hrp, hum, closestFridge, -3.5)
+        task.wait(0.5); PressE()
+        
+        local interactUI = PlayerGui:WaitForChild("_interactUI", 5)
+        if interactUI then
+            for _, el in pairs(interactUI:GetDescendants()) do
+                if el:IsA("TextLabel") and el.Text == "Take Ingredients" then ForceClick(el.Parent) break end
+            end
+            task.wait(1)
+            local listMenu = PlayerGui:WaitForChild("_ListFrame (T_Ingredients)", 5)
+            local btn = listMenu and listMenu:FindFirstChild(selectedFood .. "_Button", true)
+            if btn then 
+                ForceClick(btn:FindFirstChild("Take"))
+                pcall(function() listMenu.Frame.Event:Fire(btn) end)
+            end
+        end
+    end
+
+    Log("Pegou comida. Preparando...", Color3.fromRGB(150, 255, 150))
+    task.wait(2.5) 
+
+    -- 2. ESTAÇÃO DE TRABALHO
+    local targetStationName = "Basic Stove"
+    local finished = false
+    
+    while isRunning and currentMacroId == myId and not finished do
+        local station = nil; local sDist = math.huge
+        for _, item in pairs(workspace:WaitForChild("Plots"):GetDescendants()) do
+            if item.Name == targetStationName then
+                local d = (hrp.Position - item:GetPivot().Position).Magnitude
+                if d < sDist then sDist = d; station = item end
+            end
+        end
+        
+        if station then
+            WalkToTarget(hrp, hum, station, -3.5)
+            task.wait(0.5); PressE(); task.wait(1)
+            
+            local msgBox = PlayerGui:FindFirstChild("MessageBox", true)
+            if msgBox and msgBox.Visible then
+                ForceClick(msgBox:FindFirstChild("ButtonFrame"):FindFirstChildWhichIsA("GuiButton", true))
+                targetStationName = "Basic Counter" 
+                Log("Jogo pediu Balcão! Trocando rota...", Color3.fromRGB(255, 200, 100))
+                continue
+            end
+            
+            local acted = false
+            local interact = PlayerGui:FindFirstChild("_interactUI")
+            if interact then
+                for _, el in pairs(interact:GetDescendants()) do
+                    if el:IsA("TextLabel") then
+                        if el.Text:lower() == "clean" then 
+                            Log("Sujeira detectada! Limpando...", Color3.fromRGB(255, 150, 50))
+                            ForceClick(el.Parent); task.wait(9)
+                            Log("Voltando para Geladeira.", Color3.fromRGB(150, 255, 150))
+                            return true
+                        elseif table.find({"fry","bake","cook","prepare","stir","mix","chop"}, el.Text:lower()) then
+                            ForceClick(el.Parent); acted = true; break
+                        end
+                    end
+                end
+            end
+            
+            local ticks = 0
+            while ticks < 400 do
+                if not isRunning or currentMacroId ~= myId then return false end
+                local floating = PlayerGui:FindFirstChild("FloatingGui")
+                local btn = floating and floating:FindFirstChild("DefaultButton", true)
+                if btn and btn.Visible then
+                    local letter = nil
+                    for _, c in pairs(btn:GetDescendants()) do
+                        local match = string.match(c.Text, "^%s*([A-Za-z])%s*$")
+                        if c:IsA("TextLabel") and match then letter = string.upper(match) break end
+                    end
+                    if letter and letter ~= "E" then
+                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode[letter], false, game)
+                        task.wait(0.05); VirtualInputManager:SendKeyEvent(false, Enum.KeyCode[letter], false, game)
+                    else 
+                        ForceClick(btn) 
+                    end
+                    ticks = 0 
+                else
+                    ticks = ticks + 1
+                    if ticks > 40 then finished = true; break end
+                end
+                task.wait(0.1)
+            end
+        end
+    end
+    return true
+end
+
+-- === FUNÇÕES QUE O HUB PODE CHAMAR ===
+
+function getgenv().BloxburgChef.Start(foodName)
+    if isRunning then return end
+    selectedFood = foodName or "Hot Dogs"
+    isRunning = true
+    currentMacroId = currentMacroId + 1
+    local myId = currentMacroId
+    
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChild("Humanoid")
+    if hum then hum.WalkSpeed = 0; hum.JumpPower = 0 end
+    
+    Log("=== FARM INICIADO: " .. selectedFood .. " ===", Color3.fromRGB(50, 255, 50))
+    
+    task.spawn(function()
+        local hrp = char and char:WaitForChild("HumanoidRootPart")
+        while isRunning and currentMacroId == myId do
+            RunFarmCycle(hrp, hum, myId)
+            task.wait(1)
+        end
+    end)
+end
+
+function getgenv().BloxburgChef.Stop()
+    isRunning = false
+    currentMacroId = currentMacroId + 1
+    
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChild("Humanoid")
+    if hum then hum.WalkSpeed = 16; hum.JumpPower = 50 end
+    Camera.CameraType = Enum.CameraType.Custom
+    
+    Log("=== FARM PARADO ===", Color3.fromRGB(255, 100, 100))
+end
