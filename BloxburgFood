@@ -155,13 +155,16 @@ local function RunFarmCycle(hrp, hum, myId)
                 end
             end
             
-            -- MINIGAME SUPREMO
+            -- MINIGAME SUPREMO COM TIMER DE 15 SEGUNDOS
             local ticks = 0
-            while ticks < 400 do
+            local maxRecipeTicks = 1200 -- 2 minutos de limite total pra receita não travar o bot pra sempre
+            local recipeTickCount = 0
+
+            while recipeTickCount < maxRecipeTicks do
                 if not isRunning or currentMacroId ~= myId then return false end
                 local acted = false
                 
-                -- A) VARREDURA DO FLOATING GUI (Procura TODOS os botões ativos na tela)
+                -- A) VARREDURA DO FLOATING GUI
                 local floating = PlayerGui:FindFirstChild("FloatingGui")
                 if floating then
                     for _, btn in pairs(floating:GetDescendants()) do
@@ -172,7 +175,6 @@ local function RunFarmCycle(hrp, hum, myId)
                                 if c:IsA("TextLabel") and match then letter = string.upper(match) break end
                             end
                             
-                            -- Clica na tecla ou clica com o mouse
                             if letter and letter ~= "E" then
                                 VirtualInputManager:SendKeyEvent(true, Enum.KeyCode[letter], false, game)
                                 task.wait(0.05); VirtualInputManager:SendKeyEvent(false, Enum.KeyCode[letter], false, game)
@@ -190,7 +192,6 @@ local function RunFarmCycle(hrp, hum, myId)
                     for _, el in pairs(interactUI:GetDescendants()) do
                         if el:IsA("TextLabel") then
                             local txt = el.Text:lower()
-                            -- LISTA COMPLETA DE AÇÕES DE COZINHA (Ignora "E" e "Use")
                             local validActions = {"fry","bake","cook","prepare","stir","mix","chop","cut","pour","form","garnish","boil","add","blend"}
                             if table.find(validActions, txt) then
                                 ForceClick(el.Parent)
@@ -201,18 +202,20 @@ local function RunFarmCycle(hrp, hum, myId)
                     end
                 end
                 
-                -- Se o bot agiu, zera o contador de ociosidade
+                -- C) CONTROLE DE OCIOSIDADE (15 Segundos)
                 if acted then
                     ticks = 0
                     task.wait(0.3)
                 else
                     ticks = ticks + 1
-                    -- Se ficar 4 segundos (40 ticks) sem aparecer nenhum botão, a comida acabou!
-                    if ticks > 40 then 
+                    -- 150 ticks * 0.1s = 15 SEGUNDOS DE ESPERA
+                    if ticks > 150 then 
+                        Log("Sem ações por 15s. Prato Concluído!", Color3.fromRGB(50, 255, 50))
                         finished = true; 
                         break 
                     end
                 end
+                recipeTickCount = recipeTickCount + 1
                 task.wait(0.1)
             end
         end
@@ -231,7 +234,6 @@ function _G.BloxburgChef.Start(foodName)
     
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChild("Humanoid")
-    -- AQUI ESTAVA O BUG! Removi a trava de perna. Ele agora anda lindamente.
     if hum then hum.WalkSpeed = 16 end 
     
     Log("=== FARM INICIADO: " .. selectedFood .. " ===", Color3.fromRGB(50, 255, 50))
