@@ -7,22 +7,20 @@ local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local Camera = workspace.CurrentCamera
 
--- Cria a tabela global que o Hub vai acessar
-getgenv().BloxburgChef = {}
+-- Trocado para _G (100% compatível com Delta e celulares)
+_G.BloxburgChef = {}
 local isRunning = false
 local currentMacroId = 0
 local selectedFood = "Hot Dogs"
 
--- Função para enviar logs para o Hub (se o Hub estiver aberto)
 local function Log(texto, cor)
-    if getgenv().BloxburgChef_AddLog then
-        getgenv().BloxburgChef_AddLog(texto, cor)
+    if _G.BloxburgChef_AddLog then
+        _G.BloxburgChef_AddLog(texto, cor)
     else
         print("[Chef] " .. texto)
     end
 end
 
--- === LÓGICA DE MOVIMENTAÇÃO ===
 local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
     local targetCF = targetInstance:IsA("Model") and targetInstance:GetPivot() or targetInstance.CFrame
     local targetPos = targetCF.Position
@@ -49,7 +47,7 @@ local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
         task.wait(0.1)
     end
     camConnection:Disconnect()
-    humanoid:MoveTo(hrp.Position) -- Freio
+    humanoid:MoveTo(hrp.Position) 
     
     hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
     Camera.CameraType = Enum.CameraType.Custom
@@ -77,9 +75,7 @@ local function ForceClick(element)
     VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + inset.Y, 0, false, game, 1)
 end
 
--- === LOOP PRINCIPAL DE FARM ===
 local function RunFarmCycle(hrp, hum, myId)
-    -- 1. GELADEIRA
     local closestFridge = nil; local dist = math.huge
     for _, item in pairs(workspace:WaitForChild("Plots"):GetDescendants()) do
         if item.Name == "Icebox Fridge" then
@@ -110,7 +106,6 @@ local function RunFarmCycle(hrp, hum, myId)
     Log("Pegou comida. Preparando...", Color3.fromRGB(150, 255, 150))
     task.wait(2.5) 
 
-    -- 2. ESTAÇÃO DE TRABALHO
     local targetStationName = "Basic Stove"
     local finished = false
     
@@ -181,9 +176,7 @@ local function RunFarmCycle(hrp, hum, myId)
     return true
 end
 
--- === FUNÇÕES QUE O HUB PODE CHAMAR ===
-
-function getgenv().BloxburgChef.Start(foodName)
+function _G.BloxburgChef.Start(foodName)
     if isRunning then return end
     selectedFood = foodName or "Hot Dogs"
     isRunning = true
@@ -205,7 +198,7 @@ function getgenv().BloxburgChef.Start(foodName)
     end)
 end
 
-function getgenv().BloxburgChef.Stop()
+function _G.BloxburgChef.Stop()
     isRunning = false
     currentMacroId = currentMacroId + 1
     
