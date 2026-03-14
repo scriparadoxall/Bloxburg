@@ -10,70 +10,97 @@ local isRunning = false
 local currentMacroId = 0
 local selectedFood = "Hot Dogs"
 
--- === SISTEMA DE VISÃO HUMANA (Ajusta a sua câmera real) ===
-local function AdjustCameraToObject(targetInstance)
-    local targetPos = targetInstance:GetPivot().Position
+-- === FILTRO DE SEGURANÇA: ENCONTRAR APENAS O SEU LOTE ===
+local function GetMyOwnPlot()
+    local plots = workspace:FindFirstChild("Plots")
+    if not plots then return nil end
     
-    -- Bloxburg só mostra o "E" se o centro da tela bater no objeto.
-    -- Vamos mirar um pouco abaixo do topo do fogão (onde ficam as bocas)
-    local lookTarget = targetPos + Vector3.new(0, -0.2, 0)
-    
-    -- Suaviza o movimento da sua câmera para parecer humano
-    local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    local goal = {CFrame = CFrame.lookAt(Camera.CFrame.Position, lookTarget)}
-    
-    local tween = TweenService:Create(Camera, tweenInfo, goal)
-    tween:Play()
-    task.wait(0.5) -- Espera a visão alinhar
-end
-
--- === LOCALIZADOR POR PASTA (Conforme sua imagem do Explorer) ===
-local function GetMyPlot()
-    for _, plot in pairs(workspace.Plots:GetChildren()) do
-        if string.find(plot.Name, LocalPlayer.Name) or plot:FindFirstChild("House") then
+    -- Tenta encontrar o lote que pertence a você
+    for _, plot in pairs(plots:GetChildren()) do
+        -- No Bloxburg, o lote costuma ter o nome do jogador ou um atributo de Owner
+        if plot:FindFirstChild("Occupant") and plot.Occupant.Value == LocalPlayer.Name then
+            return plot
+        elseif string.find(plot.Name, LocalPlayer.Name) then
             return plot
         end
     end
-end
-
-local function FindStation(name)
-    local plot = GetMyPlot()
-    if plot and plot.House:FindFirstChild("Counters") then
-        local counters = plot.House.Counters:GetChildren()
-        local closest = nil
-        local dist = math.huge
-        for _, obj in pairs(counters) do
-            if obj.Name == name then
-                local d = (LocalPlayer.Character.HumanoidRootPart.Position - obj:GetPivot().Position).Magnitude
-                if d < dist then dist = d; closest = obj end
+    
+    -- Fallback: Se não achar pelo nome, pega o que o boneco está pisando em cima
+    for _, plot in pairs(plots:GetChildren()) do
+        if plot:FindFirstChild("House") then
+            local pPos = plot:GetPivot().Position
+            local charPos = LocalPlayer.Character.HumanoidRootPart.Position
+            if (Vector3.new(pPos.X, 0, pPos.Z) - Vector3.new(charPos.X, 0, charPos.Z)).Magnitude < 50 then
+                return plot
             end
         end
-        return closest
     end
+    return nil
 end
 
--- === MOVIMENTAÇÃO E INTERAÇÃO ===
-local function GoToAndInteract(objectName)
-    local obj = FindStation(objectName)
-    if not obj then return false end
+-- === LOCALIZADOR PRECISO (Só olha dentro da sua House -> Counters) ===
+local function FindMyStation(stationName)
+    local myPlot = GetMyOwnPlot()
+    if not myPlot then 
+        print("Erro: Não encontrei o seu lote!")
+        return nil 
+    end
+    
+    -- Caminho exato da sua imagem 25781: Plot -> House -> Counters
+    local countersFolder = myPlot:FindFirstChild("House") and myPlot.House:FindFirstChild("Counters")
+    if not countersFolder then return nil end
+
+    local target = nil
+    local shortestDist = math.huge
+    
+    for _, obj in pairs(countersFolder:GetChildren()) do
+        if obj.Name == stationName then
+            local d = (LocalPlayer.Character.HumanoidRootPart.Position - obj:GetPivot().Position).Magnitude
+            if d < shortestDist then
+                shortestDist = d
+                target = obj
+            end
+        end
+    end
+    return target
+end
+
+-- === AJUSTE DE CÂMERA HUMANA (PARA O FOGÃO) ===
+local function AimAtObject(obj)
+    local targetPos = obj:GetPivot().Position
+    -- Mira no centro do fogão/bancada para o 'E' aparecer
+    local lookTarget = targetPos + Vector3.new(0, -0.5, 0) 
+    
+    local tween = TweenService:Create(Camera, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {
+        CFrame = CFrame.lookAt(Camera.CFrame.Position, lookTarget)
+    })
+    tween:Play()
+    task.wait(0.5)
+end
+
+-- === MOVIMENTAÇÃO RESTRETA AO LOTE ===
+local function MoveToStation(name)
+    local station = FindMyStation(name)
+    if not station then return false end
     
     local hrp = LocalPlayer.Character.HumanoidRootPart
     local hum = LocalPlayer.Character.Humanoid
-    local targetPos = obj:GetPivot().Position
+    local targetPos = station:GetPivot().Position
     
-    -- Calcula posição de parada (frente ao fogão)
-    local offset = (hrp.Position - targetPos).Unit * 3.2
-    local walkPos = targetPos + Vector3.new(offset.X, 0, offset.Z)
+    -- Posição de paragem calculada
+    local dir = (hrp.Position - targetPos).Unit
+    local walkPos = targetPos + (dir * 3.2)
     
     hum:MoveTo(walkPos)
-    local timeout = 0
-    while (hrp.Position - walkPos).Magnitude > 1.5 and timeout < 50 do
-        task.wait(0.1); timeout = timeout + 1
+    
+    local t = 0
+    while (hrp.Position - walkPos).Magnitude > 1.5 and t < 60 do
+        task.wait(0.1); t = t + 1
     end
     
-    -- A MÁGICA: Vira o corpo e arruma a visão da sua câmera
+    -- Vira e foca a visão
     hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
-    AdjustCameraToObject(obj)
+    AimAtObject(station)
     
     task.wait(0.2)
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
@@ -82,7 +109,7 @@ local function GoToAndInteract(objectName)
     return true
 end
 
--- === LOOP PRINCIPAL ===
+-- === START/STOP ===
 function _G.BloxburgChef.Start(food)
     selectedFood = food or "Hot Dogs"
     isRunning = true
@@ -91,33 +118,19 @@ function _G.BloxburgChef.Start(food)
     
     task.spawn(function()
         while isRunning and currentMacroId == myId do
-            -- 1. Vai na Geladeira
-            GoToAndInteract("Icebox Fridge")
-            task.wait(2)
-            
-            -- (Aqui entra a lógica de clicar no menu que já tínhamos)
-            -- 2. Cozinha (Exemplo com Fogão)
-            GoToAndInteract("Basic Stove")
-            
-            -- Simula o minigame clicando na tela
-            local start = tick()
-            while tick() - start < 15 do
-                local float = LocalPlayer.PlayerGui:FindFirstChild("FloatingGui")
-                if float then
-                    -- Clica nos botões que aparecem na sua tela
-                    for _, b in pairs(float:GetDescendants()) do
-                        if b:IsA("GuiButton") and b.Visible then
-                            -- Força o clique humano
-                            local pos = b.AbsolutePosition + (b.AbsoluteSize/2)
-                            VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y + 58, 0, true, game, 1)
-                            task.wait(0.05)
-                            VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y + 58, 0, false, game, 1)
-                        end
-                    end
-                end
-                task.wait(0.2)
+            -- Agora ele só vai procurar na SUA pasta Counters
+            if MoveToStation("Icebox Fridge") then
+                task.wait(2)
+                -- Lógica do menu aqui...
             end
+            
             task.wait(1)
+            
+            -- Vai para o fogão/bancada conforme o que estiver na mão
+            -- Mas sempre dentro do SEU lote!
+            MoveToStation("Basic Stove")
+            
+            task.wait(2)
         end
     end)
 end
