@@ -34,7 +34,7 @@ local function Log(texto, cor)
     end
 end
 
--- === MOVIMENTAÇÃO E CÂMERA CORRIGIDA ===
+-- === MOVIMENTAÇÃO E CÂMERA ANTI-PAREDE ===
 local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
     local targetCF = targetInstance:IsA("Model") and targetInstance:GetPivot() or targetInstance.CFrame
     local targetPos = targetCF.Position
@@ -46,8 +46,9 @@ local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
     
     Log("Indo para o objeto...", Color3.fromRGB(200, 200, 200))
     
-    -- Garante que o modo de câmera é o normal do jogo para não bugar interações
+    -- Mantém a câmera no boneco e destravada
     Camera.CameraType = Enum.CameraType.Custom
+    Camera.CameraSubject = humanoid
     humanoid.WalkSpeed = 16
     humanoid:MoveTo(finalPos)
     
@@ -64,19 +65,16 @@ local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
         task.wait(0.1)
     end
     
-    humanoid:MoveTo(hrp.Position) -- Freio instantâneo
+    humanoid:MoveTo(hrp.Position) -- Freio
     task.wait(0.1)
     
     -- 1. Vira o CORPO do boneco de frente para o objeto
     hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
     
-    -- 2. CÂMERA DRONE: Ajusta a câmera para trás (7) e para cima (6)
-    -- E aponta para o MEIO do objeto (+3 no eixo Y) para não olhar para o chão
-    local finalCamPos = hrp.Position - (hrp.CFrame.LookVector * 7) + Vector3.new(0, 6, 0)
-    Camera.CFrame = CFrame.lookAt(finalCamPos, targetPos + Vector3.new(0, 3, 0))
-    
-    -- Devolve o foco oficial para o personagem (Resolve o bug de não aparecer interação)
-    Camera.CameraSubject = humanoid
+    -- 2. CÂMERA SOBRE O OMBRO: Bem pertinho (3 blocos atrás, 2.5 de altura) para não bater na parede!
+    -- O script vira a câmera para a panela, mas deixa ela livre pra você mexer.
+    local safeCamPos = hrp.Position - (hrp.CFrame.LookVector * 3) + Vector3.new(0, 2.5, 0)
+    Camera.CFrame = CFrame.lookAt(safeCamPos, targetPos)
 end
 
 local function PressE()
@@ -333,7 +331,7 @@ function _G.BloxburgChef.Start(foodName)
     local hum = char and char:FindFirstChild("Humanoid")
     if hum then hum.WalkSpeed = 16 end 
     
-    Log("GPS Culinário Ativo (Câmera Custom Alta)", Color3.fromRGB(100, 200, 255))
+    Log("GPS Culinário e Câmera Desbugada", Color3.fromRGB(100, 200, 255))
     Log("=== FARM INICIADO: " .. selectedFood .. " ===", Color3.fromRGB(50, 255, 50))
     
     task.spawn(function()
@@ -352,7 +350,6 @@ function _G.BloxburgChef.Stop()
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChild("Humanoid")
     if hum then hum.WalkSpeed = 16; hum.JumpPower = 50 end
-    Camera.CameraType = Enum.CameraType.Custom
     
     Log("=== FARM PARADO ===", Color3.fromRGB(255, 100, 100))
 end
