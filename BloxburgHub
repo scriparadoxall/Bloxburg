@@ -2,133 +2,206 @@ local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 
--- Carrega o Motor direto do GitHub com Bypass de Cache
--- O "tick()" engana o GitHub para ele não usar uma versão antiga que ficou salva na memória.
+-- === 1. CARREGAR O CÉREBRO (BACK-END) DO GITHUB ===
 local backendURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/BloxburgFood?t=" .. tostring(tick())
-
 local code = game:HttpGet(backendURL)
 local loadFunc, loadErr = loadstring(code)
 
 if loadFunc then
-    loadFunc() -- Instala as funções na memória
+    loadFunc()
 else
     warn("ERRO CRÍTICO NO CÓDIGO DA COMIDA: " .. tostring(loadErr))
     return
 end
 
-if not _G.BloxburgChef then
-    warn("ERRO FATAL: O arquivo BloxburgFood foi carregado, mas a tabela _G.BloxburgChef não foi criada.")
-    return
-end
+if not _G.BloxburgChef then return end
 
--- === SISTEMA ANTI-DUPLICAÇÃO UI ===
+-- === SISTEMA ANTI-DUPLICAÇÃO GERAL ===
 pcall(function() if CoreGui:FindFirstChild("Scriparadoxall") then CoreGui.Scriparadoxall:Destroy() end end)
 pcall(function() if Players.LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("Scriparadoxall") then Players.LocalPlayer.PlayerGui.Scriparadoxall:Destroy() end end)
+pcall(function() if CoreGui:FindFirstChild("ScriparadoxWarning") then CoreGui.ScriparadoxWarning:Destroy() end end)
+pcall(function() if Players.LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("ScriparadoxWarning") then Players.LocalPlayer.PlayerGui.ScriparadoxWarning:Destroy() end end)
 
-local ScriparadoxallUI = Instance.new("ScreenGui")
-ScriparadoxallUI.Name = "Scriparadoxall"
-ScriparadoxallUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-local successUI = pcall(function() ScriparadoxallUI.Parent = CoreGui end)
-if not successUI then ScriparadoxallUI.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
-
-local MainFrame = Instance.new("Frame", ScriparadoxallUI)
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-MainFrame.Position = UDim2.new(0.5, -275, 0.5, -125)
-MainFrame.Size = UDim2.new(0, 550, 0, 250)
-MainFrame.ClipsDescendants = false 
-MainFrame.Active = true
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
-
-local dragging, dragInput, dragStart, startPos
-MainFrame.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = true; dragStart = input.Position; startPos = MainFrame.Position end end)
-game:GetService("UserInputService").InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + (input.Position - dragStart).X, startPos.Y.Scale, startPos.Y.Offset + (input.Position - dragStart).Y) end end)
-MainFrame.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
-
-local Title = Instance.new("TextLabel", MainFrame)
-Title.BackgroundTransparency = 1; Title.Size = UDim2.new(1, -40, 0, 40); Title.Position = UDim2.new(0, 15, 0, 0)
-Title.Font = Enum.Font.GothamBold; Title.Text = "Scriparadoxall Hub"; Title.TextColor3 = Color3.fromRGB(255, 255, 255); Title.TextSize = 18; Title.TextXAlignment = Enum.TextXAlignment.Left
-
-local Divider = Instance.new("Frame", MainFrame)
-Divider.BackgroundColor3 = Color3.fromRGB(60, 60, 60); Divider.BorderSizePixel = 0; Divider.Position = UDim2.new(0, 0, 0, 40); Divider.Size = UDim2.new(1, 0, 0, 1)
-
-local HideButton = Instance.new("TextButton", MainFrame)
-HideButton.BackgroundTransparency = 1; HideButton.Position = UDim2.new(1, -40, 0, 0); HideButton.Size = UDim2.new(0, 40, 0, 40)
-HideButton.Font = Enum.Font.GothamBold; HideButton.Text = "-"; HideButton.TextColor3 = Color3.fromRGB(255, 255, 255); HideButton.TextSize = 24
-
-local OpenButton = Instance.new("TextButton", ScriparadoxallUI)
-OpenButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30); OpenButton.Position = UDim2.new(0, 20, 0.5, -25); OpenButton.Size = UDim2.new(0, 50, 0, 50)
-OpenButton.Font = Enum.Font.GothamBold; OpenButton.Text = "S"; OpenButton.TextColor3 = Color3.fromRGB(255, 255, 255); OpenButton.Visible = false
-Instance.new("UICorner", OpenButton).CornerRadius = UDim.new(1, 0)
-
-local tweenInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-local function MinimizeHub()
-    if not MainFrame.Visible then return end
-    TweenService:Create(MainFrame, tweenInfo, {Size = UDim2.new(0, 550, 0, 0), BackgroundTransparency = 1}):Play()
-    for _, child in pairs(MainFrame:GetChildren()) do if child:IsA("GuiObject") and not child:IsA("UICorner") then child.Visible = false end end
-    MainFrame.Visible = false; OpenButton.Visible = true
-    TweenService:Create(OpenButton, tweenInfo, {Size = UDim2.new(0, 50, 0, 50)}):Play()
-end
-HideButton.MouseButton1Click:Connect(MinimizeHub)
-OpenButton.MouseButton1Click:Connect(function()
-    TweenService:Create(OpenButton, tweenInfo, {Size = UDim2.new(0, 0, 0, 0)}):Play()
-    OpenButton.Visible = false; MainFrame.Visible = true; MainFrame.BackgroundTransparency = 0
-    TweenService:Create(MainFrame, tweenInfo, {Size = UDim2.new(0, 550, 0, 250)}):Play()
-    for _, child in pairs(MainFrame:GetChildren()) do if child:IsA("GuiObject") then child.Visible = true end end
-end)
-
-local LogPanel = Instance.new("ScrollingFrame", MainFrame)
-LogPanel.BackgroundColor3 = Color3.fromRGB(12, 12, 12); LogPanel.Position = UDim2.new(0, 190, 0, 50); LogPanel.Size = UDim2.new(0, 340, 0, 180); LogPanel.ScrollBarThickness = 4; LogPanel.BorderSizePixel = 0
-Instance.new("UICorner", LogPanel).CornerRadius = UDim.new(0, 6)
-local LogLayout = Instance.new("UIListLayout", LogPanel); LogLayout.SortOrder = Enum.SortOrder.LayoutOrder; LogLayout.Padding = UDim.new(0, 2)
-
-local logCount = 0
-_G.BloxburgChef_AddLog = function(texto, cor)
-    logCount = logCount + 1
-    local newLog = Instance.new("TextLabel", LogPanel)
-    newLog.BackgroundTransparency = 1; newLog.Size = UDim2.new(1, -10, 0, 16); newLog.Font = Enum.Font.Code; newLog.Text = "[" .. os.date("%H:%M") .. "] " .. texto; newLog.TextColor3 = cor or Color3.fromRGB(200, 200, 200); newLog.TextSize = 11; newLog.TextXAlignment = Enum.TextXAlignment.Left; newLog.LayoutOrder = logCount
-    LogPanel.CanvasSize = UDim2.new(0, 0, 0, LogLayout.AbsoluteContentSize.Y)
-    LogPanel.CanvasPosition = Vector2.new(0, LogLayout.AbsoluteContentSize.Y)
-end
-_G.BloxburgChef_AddLog("Cérebro carregado via GitHub!", Color3.fromRGB(50, 255, 255))
-
-local selectedFoodUI = "Hot Dogs"
-local FoodBtn = Instance.new("TextButton", MainFrame)
-FoodBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); FoodBtn.Position = UDim2.new(0, 15, 0, 50); FoodBtn.Size = UDim2.new(0, 160, 0, 35)
-FoodBtn.Font = Enum.Font.GothamSemibold; FoodBtn.Text = "🍕 " .. selectedFoodUI; FoodBtn.TextColor3 = Color3.fromRGB(255, 255, 255); FoodBtn.TextSize = 12
-Instance.new("UICorner", FoodBtn).CornerRadius = UDim.new(0, 6)
-
-local FoodListPanel = Instance.new("ScrollingFrame", MainFrame)
-FoodListPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 25); FoodListPanel.Position = UDim2.new(0, 15, 0, 90); FoodListPanel.Size = UDim2.new(0, 160, 0, 145); FoodListPanel.ScrollBarThickness = 4; FoodListPanel.ZIndex = 10; FoodListPanel.Visible = false
-Instance.new("UICorner", FoodListPanel).CornerRadius = UDim.new(0, 6)
-local FoodLayout = Instance.new("UIListLayout", FoodListPanel); FoodLayout.Padding = UDim.new(0, 2)
-
-local listaComidas = {"Baby Food", "Garden Salad", "Hot Dogs", "Corn on the Cob", "Vegetable Soup", "Fruit Salad", "Mini Corndogs", "Chicken Nuggets", "Rice Pudding", "Loaf of Bread", "Mandazi", "Birthday Cupcakes"}
-for _, comida in ipairs(listaComidas) do
-    local btn = Instance.new("TextButton", FoodListPanel)
-    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35); btn.Size = UDim2.new(1, 0, 0, 30); btn.ZIndex = 11; btn.Font = Enum.Font.Gotham; btn.Text = comida; btn.TextColor3 = Color3.fromRGB(200, 200, 200); btn.TextSize = 12
-    btn.MouseButton1Click:Connect(function() selectedFoodUI = comida; FoodBtn.Text = "🍕 " .. selectedFoodUI; FoodListPanel.Visible = false end)
-end
-FoodLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() FoodListPanel.CanvasSize = UDim2.new(0, 0, 0, FoodLayout.AbsoluteContentSize.Y) end)
-FoodBtn.MouseButton1Click:Connect(function() FoodListPanel.Visible = not FoodListPanel.Visible end)
-
-local FarmBtn = Instance.new("TextButton", MainFrame)
-FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40); FarmBtn.Position = UDim2.new(0, 15, 0, 95); FarmBtn.Size = UDim2.new(0, 160, 0, 40)
-FarmBtn.Font = Enum.Font.GothamBold; FarmBtn.Text = "▶ Iniciar Farm"; FarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255); FarmBtn.TextSize = 14
-Instance.new("UICorner", FarmBtn).CornerRadius = UDim.new(0, 6)
-
-local isUIActive = false
-FarmBtn.MouseButton1Click:Connect(function()
-    if isUIActive then
-        isUIActive = false
-        FarmBtn.Text = "▶ Iniciar Farm"
-        FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
-        _G.BloxburgChef.Stop()
-    else
-        isUIActive = true
-        FarmBtn.Text = "🛑 Parar Farm"
-        FarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-        FoodListPanel.Visible = false
-        MinimizeHub()
-        _G.BloxburgChef.Start(selectedFoodUI)
+-- Verifica se o usuário já marcou "Never show again"
+local hideWarning = false
+pcall(function()
+    if isfile and isfile("Scriparadoxall_Warning.txt") then
+        if readfile("Scriparadoxall_Warning.txt") == "true" then
+            hideWarning = true
+        end
     end
 end)
+
+-- === FUNÇÃO PARA CARREGAR O HUB PRINCIPAL ===
+local function LoadMainHub()
+    local ScriparadoxallUI = Instance.new("ScreenGui")
+    ScriparadoxallUI.Name = "Scriparadoxall"
+    ScriparadoxallUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    local successUI = pcall(function() ScriparadoxallUI.Parent = CoreGui end)
+    if not successUI then ScriparadoxallUI.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
+
+    local MainFrame = Instance.new("Frame", ScriparadoxallUI)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    MainFrame.Position = UDim2.new(0.5, -275, 0.5, -125)
+    MainFrame.Size = UDim2.new(0, 550, 0, 250)
+    MainFrame.ClipsDescendants = false 
+    MainFrame.Active = true
+    Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
+
+    local dragging, dragInput, dragStart, startPos
+    MainFrame.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = true; dragStart = input.Position; startPos = MainFrame.Position end end)
+    game:GetService("UserInputService").InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + (input.Position - dragStart).X, startPos.Y.Scale, startPos.Y.Offset + (input.Position - dragStart).Y) end end)
+    MainFrame.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
+
+    local Title = Instance.new("TextLabel", MainFrame)
+    Title.BackgroundTransparency = 1; Title.Size = UDim2.new(1, -40, 0, 40); Title.Position = UDim2.new(0, 15, 0, 0)
+    Title.Font = Enum.Font.GothamBold; Title.Text = "Scriparadoxall Hub"; Title.TextColor3 = Color3.fromRGB(255, 255, 255); Title.TextSize = 18; Title.TextXAlignment = Enum.TextXAlignment.Left
+
+    local Divider = Instance.new("Frame", MainFrame)
+    Divider.BackgroundColor3 = Color3.fromRGB(60, 60, 60); Divider.BorderSizePixel = 0; Divider.Position = UDim2.new(0, 0, 0, 40); Divider.Size = UDim2.new(1, 0, 0, 1)
+
+    local HideButton = Instance.new("TextButton", MainFrame)
+    HideButton.BackgroundTransparency = 1; HideButton.Position = UDim2.new(1, -40, 0, 0); HideButton.Size = UDim2.new(0, 40, 0, 40)
+    HideButton.Font = Enum.Font.GothamBold; HideButton.Text = "-"; HideButton.TextColor3 = Color3.fromRGB(255, 255, 255); HideButton.TextSize = 24
+
+    local OpenButton = Instance.new("TextButton", ScriparadoxallUI)
+    OpenButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30); OpenButton.Position = UDim2.new(0, 20, 0.5, -25); OpenButton.Size = UDim2.new(0, 50, 0, 50)
+    OpenButton.Font = Enum.Font.GothamBold; OpenButton.Text = "S"; OpenButton.TextColor3 = Color3.fromRGB(255, 255, 255); OpenButton.Visible = false
+    Instance.new("UICorner", OpenButton).CornerRadius = UDim.new(1, 0)
+
+    local tweenInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+    local function MinimizeHub()
+        if not MainFrame.Visible then return end
+        TweenService:Create(MainFrame, tweenInfo, {Size = UDim2.new(0, 550, 0, 0), BackgroundTransparency = 1}):Play()
+        for _, child in pairs(MainFrame:GetChildren()) do if child:IsA("GuiObject") and not child:IsA("UICorner") then child.Visible = false end end
+        MainFrame.Visible = false; OpenButton.Visible = true
+        TweenService:Create(OpenButton, tweenInfo, {Size = UDim2.new(0, 50, 0, 50)}):Play()
+    end
+    HideButton.MouseButton1Click:Connect(MinimizeHub)
+    OpenButton.MouseButton1Click:Connect(function()
+        TweenService:Create(OpenButton, tweenInfo, {Size = UDim2.new(0, 0, 0, 0)}):Play()
+        OpenButton.Visible = false; MainFrame.Visible = true; MainFrame.BackgroundTransparency = 0
+        TweenService:Create(MainFrame, tweenInfo, {Size = UDim2.new(0, 550, 0, 250)}):Play()
+        for _, child in pairs(MainFrame:GetChildren()) do if child:IsA("GuiObject") then child.Visible = true end end
+    end)
+
+    local LogPanel = Instance.new("ScrollingFrame", MainFrame)
+    LogPanel.BackgroundColor3 = Color3.fromRGB(12, 12, 12); LogPanel.Position = UDim2.new(0, 190, 0, 50); LogPanel.Size = UDim2.new(0, 340, 0, 180); LogPanel.ScrollBarThickness = 4; LogPanel.BorderSizePixel = 0
+    Instance.new("UICorner", LogPanel).CornerRadius = UDim.new(0, 6)
+    local LogLayout = Instance.new("UIListLayout", LogPanel); LogLayout.SortOrder = Enum.SortOrder.LayoutOrder; LogLayout.Padding = UDim.new(0, 2)
+
+    local logCount = 0
+    _G.BloxburgChef_AddLog = function(texto, cor)
+        logCount = logCount + 1
+        local newLog = Instance.new("TextLabel", LogPanel)
+        newLog.BackgroundTransparency = 1; newLog.Size = UDim2.new(1, -10, 0, 16); newLog.Font = Enum.Font.Code; newLog.Text = "[" .. os.date("%H:%M") .. "] " .. texto; newLog.TextColor3 = cor or Color3.fromRGB(200, 200, 200); newLog.TextSize = 11; newLog.TextXAlignment = Enum.TextXAlignment.Left; newLog.LayoutOrder = logCount
+        LogPanel.CanvasSize = UDim2.new(0, 0, 0, LogLayout.AbsoluteContentSize.Y)
+        LogPanel.CanvasPosition = Vector2.new(0, LogLayout.AbsoluteContentSize.Y)
+    end
+    _G.BloxburgChef_AddLog("Módulos carregados com sucesso!", Color3.fromRGB(50, 255, 255))
+
+    local selectedFoodUI = "Hot Dogs"
+    local FoodBtn = Instance.new("TextButton", MainFrame)
+    FoodBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); FoodBtn.Position = UDim2.new(0, 15, 0, 50); FoodBtn.Size = UDim2.new(0, 160, 0, 35)
+    FoodBtn.Font = Enum.Font.GothamSemibold; FoodBtn.Text = "🍕 " .. selectedFoodUI; FoodBtn.TextColor3 = Color3.fromRGB(255, 255, 255); FoodBtn.TextSize = 12
+    Instance.new("UICorner", FoodBtn).CornerRadius = UDim.new(0, 6)
+
+    local FoodListPanel = Instance.new("ScrollingFrame", MainFrame)
+    FoodListPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 25); FoodListPanel.Position = UDim2.new(0, 15, 0, 90); FoodListPanel.Size = UDim2.new(0, 160, 0, 145); FoodListPanel.ScrollBarThickness = 4; FoodListPanel.ZIndex = 10; FoodListPanel.Visible = false
+    Instance.new("UICorner", FoodListPanel).CornerRadius = UDim.new(0, 6)
+    local FoodLayout = Instance.new("UIListLayout", FoodListPanel); FoodLayout.Padding = UDim.new(0, 2)
+
+    local listaComidas = {"Baby Food", "Garden Salad", "Hot Dogs", "Corn on the Cob", "Vegetable Soup", "Fruit Salad", "Mini Corndogs", "Chicken Nuggets", "Rice Pudding", "Loaf of Bread", "Mandazi", "Birthday Cupcakes"}
+    for _, comida in ipairs(listaComidas) do
+        local btn = Instance.new("TextButton", FoodListPanel)
+        btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35); btn.Size = UDim2.new(1, 0, 0, 30); btn.ZIndex = 11; btn.Font = Enum.Font.Gotham; btn.Text = comida; btn.TextColor3 = Color3.fromRGB(200, 200, 200); btn.TextSize = 12
+        btn.MouseButton1Click:Connect(function() selectedFoodUI = comida; FoodBtn.Text = "🍕 " .. selectedFoodUI; FoodListPanel.Visible = false end)
+    end
+    FoodLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() FoodListPanel.CanvasSize = UDim2.new(0, 0, 0, FoodLayout.AbsoluteContentSize.Y) end)
+    FoodBtn.MouseButton1Click:Connect(function() FoodListPanel.Visible = not FoodListPanel.Visible end)
+
+    local FarmBtn = Instance.new("TextButton", MainFrame)
+    FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40); FarmBtn.Position = UDim2.new(0, 15, 0, 95); FarmBtn.Size = UDim2.new(0, 160, 0, 40)
+    FarmBtn.Font = Enum.Font.GothamBold; FarmBtn.Text = "▶ Iniciar Farm"; FarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255); FarmBtn.TextSize = 14
+    Instance.new("UICorner", FarmBtn).CornerRadius = UDim.new(0, 6)
+
+    local isUIActive = false
+    FarmBtn.MouseButton1Click:Connect(function()
+        if isUIActive then
+            isUIActive = false
+            FarmBtn.Text = "▶ Iniciar Farm"
+            FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
+            _G.BloxburgChef.Stop()
+        else
+            isUIActive = true
+            FarmBtn.Text = "🛑 Parar Farm"
+            FarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+            FoodListPanel.Visible = false
+            MinimizeHub()
+            _G.BloxburgChef.Start(selectedFoodUI)
+        end
+    end)
+end
+
+-- === TELA DE AVISO (WARNING) ===
+if hideWarning then
+    LoadMainHub()
+else
+    local WarningUI = Instance.new("ScreenGui")
+    WarningUI.Name = "ScriparadoxWarning"
+    WarningUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    pcall(function() WarningUI.Parent = CoreGui end)
+    if not WarningUI.Parent then WarningUI.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
+
+    local WarnFrame = Instance.new("Frame", WarningUI)
+    WarnFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    WarnFrame.Position = UDim2.new(0.5, -225, 0.5, -125)
+    WarnFrame.Size = UDim2.new(0, 450, 0, 250)
+    Instance.new("UICorner", WarnFrame).CornerRadius = UDim.new(0, 8)
+
+    local WarnTitle = Instance.new("TextLabel", WarnFrame)
+    WarnTitle.BackgroundTransparency = 1; WarnTitle.Size = UDim2.new(1, 0, 0, 40)
+    WarnTitle.Font = Enum.Font.GothamBold; WarnTitle.Text = "⚠️ IMPORTANT WARNING ⚠️"
+    WarnTitle.TextColor3 = Color3.fromRGB(255, 80, 80); WarnTitle.TextSize = 18
+
+    local WarnText = Instance.new("TextLabel", WarnFrame)
+    WarnText.BackgroundTransparency = 1; WarnText.Position = UDim2.new(0, 20, 0, 45); WarnText.Size = UDim2.new(1, -40, 0, 120)
+    WarnText.Font = Enum.Font.Gotham; WarnText.TextColor3 = Color3.fromRGB(220, 220, 220); WarnText.TextSize = 14; WarnText.TextWrapped = true
+    WarnText.Text = "Our bot operates 100% like a real user, without teleports or suspicious movements. This requires a highly precise reading of the game's interface.\n\nWhile our script can read some other languages, it may contain bugs. To avoid any inconvenience, PLEASE KEEP YOUR GAME LANGUAGE IN ENGLISH."
+
+    local CheckboxBtn = Instance.new("TextButton", WarnFrame)
+    CheckboxBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); CheckboxBtn.Position = UDim2.new(0, 20, 1, -60); CheckboxBtn.Size = UDim2.new(0, 20, 0, 20)
+    CheckboxBtn.Font = Enum.Font.GothamBold; CheckboxBtn.Text = ""; CheckboxBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Instance.new("UICorner", CheckboxBtn).CornerRadius = UDim.new(0, 4)
+
+    local CheckboxLabel = Instance.new("TextLabel", WarnFrame)
+    CheckboxLabel.BackgroundTransparency = 1; CheckboxLabel.Position = UDim2.new(0, 50, 1, -60); CheckboxLabel.Size = UDim2.new(0, 200, 0, 20)
+    CheckboxLabel.Font = Enum.Font.Gotham; CheckboxLabel.Text = "Don't show this again"; CheckboxLabel.TextColor3 = Color3.fromRGB(200, 200, 200); CheckboxLabel.TextSize = 13; CheckboxLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    local isChecked = false
+    CheckboxBtn.MouseButton1Click:Connect(function()
+        isChecked = not isChecked
+        if isChecked then
+            CheckboxBtn.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
+            CheckboxBtn.Text = "X"
+        else
+            CheckboxBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            CheckboxBtn.Text = ""
+        end
+    end)
+
+    local ContinueBtn = Instance.new("TextButton", WarnFrame)
+    ContinueBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 200); ContinueBtn.Position = UDim2.new(1, -120, 1, -65); ContinueBtn.Size = UDim2.new(0, 100, 0, 30)
+    ContinueBtn.Font = Enum.Font.GothamBold; ContinueBtn.Text = "I Understand"; ContinueBtn.TextColor3 = Color3.fromRGB(255, 255, 255); ContinueBtn.TextSize = 14
+    Instance.new("UICorner", ContinueBtn).CornerRadius = UDim.new(0, 6)
+
+    ContinueBtn.MouseButton1Click:Connect(function()
+        if isChecked then
+            pcall(function()
+                if writefile then writefile("Scriparadoxall_Warning.txt", "true") end
+            end)
+        end
+        WarningUI:Destroy()
+        LoadMainHub()
+    end)
+end
