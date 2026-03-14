@@ -12,83 +12,51 @@ local isRunning = false
 local currentMacroId = 0
 local selectedFood = "Hot Dogs"
 
--- Dicionário Bilíngue de Ações
-local validActions = {
-    "fry", "bake", "cook", "prepare", "stir", "mix", "chop", 
-    "cut", "pour", "form", "garnish", "boil", "add", "blend",
-    "fritar", "assar", "cozinhar", "preparar", "mexer", "misturar", "cortar",
-    "picar", "despejar", "formar", "modelar", "decorar", "guarnecer", "ferver", 
-    "adicionar", "bater"
-}
-
-local finishedActions = {
-    "eat", "place", "take portion", "store",
-    "comer", "colocar", "pegar porção", "guardar"
-}
-
+-- Sistema de Log
 local function Log(texto, cor)
-    if _G.BloxburgChef_AddLog then
-        _G.BloxburgChef_AddLog(texto, cor)
-    else
-        print("[Chef] " .. texto)
-    end
+    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog(texto, cor) end
 end
 
--- === MOVIMENTAÇÃO COM CÂMERA "OVER THE SHOULDER" ===
-local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
-    local targetCF = targetInstance:IsA("Model") and targetInstance:GetPivot() or targetInstance.CFrame
-    local targetPos = targetCF.Position
+-- === ROTAÇÃO HUMANA ===
+local function FaceObjectHumane(hrp, targetPos)
+    -- Vira o boneco para o objeto (Isso já arrasta a câmera Custom junto)
+    local newLook = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)
+    hrp.CFrame = CFrame.lookAt(hrp.Position, newLook)
     
+    -- Dá um leve ajuste na câmera para ela olhar um pouco para baixo (ângulo de interação)
+    -- Simulando o movimento do mouse/dedo do jogador
+    local camPos = Camera.CFrame.Position
+    local targetWithOffset = targetPos + Vector3.new(0, -1, 0) -- Olha para o meio do fogão
+    
+    -- Tween suave de 0.3 segundos para a câmera não dar "pulo"
+    local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local goal = {CFrame = CFrame.lookAt(camPos, targetWithOffset)}
+    game:GetService("TweenService"):Create(Camera, tweenInfo, goal):Play()
+end
+
+local function WalkToTarget(hrp, humanoid, targetInstance)
+    local targetPos = targetInstance:IsA("Model") and targetInstance:GetPivot().Position or targetInstance.Position
+    
+    -- Distância de braço (3 blocos)
     local direction = (hrp.Position - targetPos).Unit
-    local finalPos = targetPos + Vector3.new(direction.X * distanceOffset, 0, direction.Z * distanceOffset)
+    local finalPos = targetPos + (direction * 3)
     finalPos = Vector3.new(finalPos.X, hrp.Position.Y, finalPos.Z)
     
-    Log("Indo para o objeto...", Color3.fromRGB(200, 200, 200))
+    humanoid:MoveTo(finalPos)
     
-    Camera.CameraType = Enum.CameraType.Custom
-    Camera.CameraSubject = humanoid
-    humanoid.WalkSpeed = 16
-    
-    local arrived = false
     local timeout = 0
-    local lastPos = hrp.Position
-    local stuckTicks = 0
-    
-    while not arrived and timeout < 150 do
-        if (hrp.Position - finalPos).Magnitude < 2 then
-            arrived = true
-        else
-            humanoid:MoveTo(finalPos)
-            
-            -- Anti-Trancamento (Pulo)
-            if (hrp.Position - lastPos).Magnitude < 0.2 then
-                stuckTicks = stuckTicks + 1
-                if stuckTicks > 5 then 
-                    humanoid.Jump = true
-                    Log("Desatolando...", Color3.fromRGB(255, 150, 50))
-                    stuckTicks = 0
-                end
-            else
-                stuckTicks = 0
-            end
-            lastPos = hrp.Position
-        end
-        timeout = timeout + 1
+    while (hrp.Position - finalPos).Magnitude > 1.5 and timeout < 100 do
+        if humanoid.MoveDirection.Magnitude < 0.1 then humanoid.Jump = true end
         task.wait(0.1)
+        timeout = timeout + 1
     end
     
-    humanoid:MoveTo(hrp.Position) 
-    task.wait(0.1)
-    
-    -- Vira o boneco de frente pro objeto
-    hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
-    
-    -- A MÁGICA DA CÂMERA: Atrás (2.5), para Cima (2.5) e para a DIREITA (2.0)
-    -- Isso evita que o seu corpo bloqueie o Raycast da Interação!
-    local safeCamPos = hrp.Position - (hrp.CFrame.LookVector * 2.5) + (hrp.CFrame.RightVector * 2) + Vector3.new(0, 2.5, 0)
-    Camera.CFrame = CFrame.lookAt(safeCamPos, targetPos + Vector3.new(0, 1, 0))
+    -- CHEGOU: Agora faz a virada humana
+    FaceObjectHumane(hrp, targetPos)
+    task.wait(0.3)
 end
 
+-- Lógica de Cliques e Botão Azul
 local function PressE()
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
     task.wait(0.05)
@@ -96,13 +64,7 @@ local function PressE()
 end
 
 local function ForceClick(element)
-    if not element or element.AbsoluteSize.X == 0 then return end
-    pcall(function()
-        if element.MouseButton1Click then for _, conn in pairs(getconnections(element.MouseButton1Click)) do conn:Fire() end end
-        if element.Activated then for _, conn in pairs(getconnections(element.Activated)) do conn:Fire() end end
-        if element.InputBegan then for _, conn in pairs(getconnections(element.InputBegan)) do conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin}) end end
-        if element.InputEnded then for _, conn in pairs(getconnections(element.InputEnded)) do conn:Fire({UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.End}) end end
-    end)
+    if not element or not element.Visible then return end
     local center = element.AbsolutePosition + (element.AbsoluteSize / 2)
     local inset = GuiService:GetGuiInset()
     VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + inset.Y, 0, true, game, 1)
@@ -110,244 +72,99 @@ local function ForceClick(element)
     VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + inset.Y, 0, false, game, 1)
 end
 
--- === LOOP PRINCIPAL DE FARM ===
+-- === CICLO DE COZINHA ===
 local function RunFarmCycle(hrp, hum, myId)
-    -- ==========================================
-    -- 1. GELADEIRA
-    -- ==========================================
-    local closestFridge = nil; local dist = math.huge
-    for _, item in pairs(workspace:WaitForChild("Plots"):GetDescendants()) do
+    -- Busca a Geladeira mais próxima
+    local fridge = nil; local dist = math.huge
+    for _, item in pairs(workspace:GetDescendants()) do
         if item.Name == "Icebox Fridge" then
             local d = (hrp.Position - item:GetPivot().Position).Magnitude
-            if d < dist then dist = d; closestFridge = item end
-        end
-    end
-    
-    if closestFridge then
-        WalkToTarget(hrp, hum, closestFridge, 2.5)
-        task.wait(0.8); PressE()
-        
-        local interactUI = PlayerGui:WaitForChild("_interactUI", 5)
-        if not interactUI then return false end
-
-        local takeIngBtn = nil
-        for i = 1, 30 do 
-            if not isRunning or currentMacroId ~= myId then return false end
-            for _, el in pairs(interactUI:GetDescendants()) do
-                if el:IsA("TextLabel") then
-                    local txt = el.Text:lower()
-                    if txt == "take ingredients" or txt == "pegar ingredientes" then 
-                        takeIngBtn = el.Parent; break 
-                    end
-                end
-            end
-            if takeIngBtn then break end; task.wait(0.1)
-        end
-
-        if not takeIngBtn then return false end
-
-        local listMenu = nil
-        for tentativa = 1, 5 do
-            if not isRunning or currentMacroId ~= myId then return false end
-            ForceClick(takeIngBtn)
-            task.wait(1.2)
-            listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)", true)
-            if listMenu and listMenu.AbsoluteSize.Y > 0 then break end
-        end
-
-        if not listMenu or listMenu.AbsoluteSize.Y == 0 then return false end
-        
-        local targetFoodBtn = nil
-        for i = 1, 50 do 
-            if not isRunning or currentMacroId ~= myId then return false end
-            targetFoodBtn = listMenu:FindFirstChild(selectedFood .. "_Button", true)
-            if targetFoodBtn then break end; task.wait(0.1)
-        end
-        
-        if targetFoodBtn then 
-            local takeBtn = targetFoodBtn:FindFirstChild("Take")
-            if takeBtn then
-                ForceClick(takeBtn)
-                local frame = listMenu:FindFirstChild("Frame")
-                local masterEvent = frame and frame:FindFirstChild("Event")
-                if masterEvent and masterEvent:IsA("BindableEvent") then pcall(function() masterEvent:Fire(targetFoodBtn) end) end
-            end
-        else
-            Log("ERRO: Comida não achada.", Color3.fromRGB(255, 50, 50)); return false
+            if d < dist then dist = d; fridge = item end
         end
     end
 
-    local hasFood = false
-    local equippedBtn = nil
-    for w = 1, 40 do
-        if not isRunning or currentMacroId ~= myId then return false end
-        equippedBtn = PlayerGui:FindFirstChild("EquippedButton", true)
-        if equippedBtn and equippedBtn.Visible then
-            hasFood = true
-            Log("Comida em mãos!", Color3.fromRGB(50, 255, 50))
-            break
+    if fridge then
+        WalkToTarget(hrp, hum, fridge)
+        task.wait(0.2)
+        PressE()
+        Log("Abrindo Geladeira...", Color3.fromRGB(255, 255, 255))
+        
+        -- Espera carregar a lista e clica em Ingredients
+        task.wait(1.5)
+        local listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)", true)
+        if listMenu then
+            local foodBtn = listMenu:FindFirstChild(selectedFood .. "_Button", true)
+            if foodBtn then
+                ForceClick(foodBtn:FindFirstChild("Take"))
+                pcall(function() listMenu.Frame.Event:Fire(foodBtn) end)
+            end
         end
-        task.wait(0.1)
     end
 
-    if not hasFood then return false end
-
-    -- ==========================================
-    -- 2. ROTAS E ESTAÇÕES
-    -- ==========================================
-    local finished = false
-    
-    while isRunning and currentMacroId == myId and not finished do
-        local targetStationName = "Basic Counter"
-        local actionLbl = equippedBtn:FindFirstChild("ActionLabel")
-        if actionLbl then
-            local act = actionLbl.Text:lower()
-            
-            if table.find(finishedActions, act) then
-                Log("Prato Finalizado Automaticamente!", Color3.fromRGB(50, 255, 50))
-                finished = true
-                break
-            end
-            
-            Log("Ação Necessária: " .. actionLbl.Text, Color3.fromRGB(150, 200, 255))
-            
-            if string.find(act, "fry") or string.find(act, "boil") or string.find(act, "cook") or string.find(act, "bake") or string.find(act, "fritar") or string.find(act, "ferver") or string.find(act, "cozinhar") or string.find(act, "assar") then
-                targetStationName = "Basic Stove"
-            else
-                targetStationName = "Basic Counter"
-            end
-        end
-
-        local station = nil; local sDist = math.huge
-        for _, item in pairs(workspace:WaitForChild("Plots"):GetDescendants()) do
-            if item.Name == targetStationName then
-                local d = (hrp.Position - item:GetPivot().Position).Magnitude
-                if d < sDist then sDist = d; station = item end
-            end
-        end
-        
-        if station then
-            WalkToTarget(hrp, hum, station, 2.5)
-            task.wait(0.5); PressE(); task.wait(1)
-            
-            local msgBox = PlayerGui:FindFirstChild("MessageBox", true)
-            if msgBox and msgBox.Visible then
-                ForceClick(msgBox:FindFirstChild("ButtonFrame"):FindFirstChildWhichIsA("GuiButton", true))
-                continue
-            end
-            
-            local interact = PlayerGui:FindFirstChild("_interactUI")
-            if interact then
-                for _, el in pairs(interact:GetDescendants()) do
-                    if el:IsA("TextLabel") and (el.Text:lower() == "clean" or el.Text:lower() == "limpar") then
-                        Log("Limpando sujeira...", Color3.fromRGB(255, 150, 50))
-                        ForceClick(el.Parent); task.wait(9)
-                        Log("Limpo! Recomeçando prato...", Color3.fromRGB(150, 255, 150))
-                        return true
-                    end
-                end
-            end
-            
-            -- ==========================================
-            -- MINIGAME DE COZINHAR
-            -- ==========================================
-            local ticks = 0
-            local maxRecipeTicks = 1200 
-            local recipeTickCount = 0
-
-            while recipeTickCount < maxRecipeTicks do
-                if not isRunning or currentMacroId ~= myId then return false end
-                local acted = false
+    -- Loop de Estações (Fogão/Balcão) baseado no texto do botão azul
+    while isRunning and currentMacroId == myId do
+        local equipped = PlayerGui:FindFirstChild("EquippedButton", true)
+        if equipped and equipped.Visible then
+            local actLbl = equipped:FindFirstChild("ActionLabel")
+            if actLbl then
+                local act = actLbl.Text:lower()
                 
-                -- A) TELA CENTRAL (Teclado)
-                local floating = PlayerGui:FindFirstChild("FloatingGui")
-                if floating then
-                    for _, btn in pairs(floating:GetDescendants()) do
-                        if btn.Name == "DefaultButton" and btn:IsA("GuiButton") and btn.Visible then
-                            local letter = nil
-                            for _, c in pairs(btn:GetDescendants()) do
-                                local match = string.match(c.Text, "^%s*([A-Za-z])%s*$")
-                                if c:IsA("TextLabel") and match then letter = string.upper(match) break end
+                -- Se aparecer Eat ou Place, acabou
+                if act:find("eat") or act:find("place") or act:find("portion") then 
+                    Log("Prato pronto!", Color3.fromRGB(50, 255, 50))
+                    break 
+                end
+                
+                -- Decide destino
+                local isStove = act:find("fry") or act:find("boil") or act:find("cook") or act:find("bake")
+                local targetName = isStove and "Basic Stove" or "Basic Counter"
+                
+                local station = nil; local sDist = math.huge
+                for _, item in pairs(workspace:GetDescendants()) do
+                    if item.Name == targetName then
+                        local d = (hrp.Position - item:GetPivot().Position).Magnitude
+                        if d < sDist then sDist = d; station = item end
+                    end
+                end
+                
+                if station then
+                    WalkToTarget(hrp, hum, station)
+                    task.wait(0.2)
+                    PressE()
+                    
+                    -- Minigame (Clica em tudo que aparecer na FloatingGui)
+                    local start = tick()
+                    while tick() - start < 25 do
+                        local float = PlayerGui:FindFirstChild("FloatingGui")
+                        if float then
+                            for _, b in pairs(float:GetDescendants()) do
+                                if b:IsA("GuiButton") and b.Visible then ForceClick(b) end
                             end
-                            
-                            if letter and letter ~= "E" then
-                                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode[letter], false, game)
-                                task.wait(0.05); VirtualInputManager:SendKeyEvent(false, Enum.KeyCode[letter], false, game)
-                            else 
-                                ForceClick(btn) 
-                            end
-                            acted = true
                         end
+                        -- Se o botão azul mudar de texto, significa que mudou a etapa
+                        if actLbl.Text:lower() ~= act then break end
+                        task.wait(0.2)
                     end
                 end
-                
-                -- B) O BOTÃO AZUL
-                if equippedBtn and equippedBtn.Visible then
-                    local currentActionLbl = equippedBtn:FindFirstChild("ActionLabel")
-                    if currentActionLbl then
-                        local currentAction = currentActionLbl.Text:lower()
-                        
-                        if table.find(finishedActions, currentAction) then
-                            Log("Pronto para '".. currentActionLbl.Text .."'! Reiniciando...", Color3.fromRGB(50, 255, 50))
-                            finished = true
-                            break
-                        end
-                        
-                        if table.find(validActions, currentAction) then
-                            ForceClick(equippedBtn)
-                            acted = true
-                        end
-                    end
-                end
-                
-                -- C) MÃOZINHAS AZUIS (Backup)
-                local interactUI = PlayerGui:FindFirstChild("_interactUI")
-                if interactUI and not acted then
-                    for _, el in pairs(interactUI:GetDescendants()) do
-                        if el:IsA("TextLabel") and table.find(validActions, el.Text:lower()) then
-                            ForceClick(el.Parent)
-                            acted = true
-                            break
-                        end
-                    end
-                end
-                
-                if acted then
-                    ticks = 0; task.wait(0.4)
-                else
-                    ticks = ticks + 1
-                    if ticks > 150 then 
-                        Log("Sem botões por 15s. Avançando.", Color3.fromRGB(200, 200, 200))
-                        break
-                    end
-                end
-                
-                if finished then break end
-                recipeTickCount = recipeTickCount + 1
-                task.wait(0.1)
             end
         end
+        task.wait(0.5)
     end
-    return true
 end
 
--- === COMANDOS DO HUB ===
+-- === CONTROLES DO HUB ===
 function _G.BloxburgChef.Start(foodName)
     if isRunning then return end
     selectedFood = foodName or "Hot Dogs"
     isRunning = true
     currentMacroId = currentMacroId + 1
     local myId = currentMacroId
-    
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChild("Humanoid")
-    if hum then hum.WalkSpeed = 16 end 
-    
-    Log("GPS Culinário e Câmera no Ombro Ativos", Color3.fromRGB(100, 200, 255))
-    Log("=== FARM INICIADO: " .. selectedFood .. " ===", Color3.fromRGB(50, 255, 50))
+    Log("Farm Iniciado - Modo Humano", Color3.fromRGB(50, 255, 50))
     
     task.spawn(function()
-        local hrp = char and char:WaitForChild("HumanoidRootPart")
+        local char = LocalPlayer.Character
+        local hrp = char:WaitForChild("HumanoidRootPart")
+        local hum = char:WaitForChild("Humanoid")
         while isRunning and currentMacroId == myId do
             RunFarmCycle(hrp, hum, myId)
             task.wait(1)
@@ -358,10 +175,5 @@ end
 function _G.BloxburgChef.Stop()
     isRunning = false
     currentMacroId = currentMacroId + 1
-    
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChild("Humanoid")
-    if hum then hum.WalkSpeed = 16; hum.JumpPower = 50 end
-    
-    Log("=== FARM PARADO ===", Color3.fromRGB(255, 100, 100))
+    Log("Farm Parado", Color3.fromRGB(255, 100, 100))
 end
