@@ -12,7 +12,7 @@ local isRunning = false
 local currentMacroId = 0
 local selectedFood = "Hot Dogs"
 
--- Dicionário Bilíngue
+-- Dicionário Bilíngue de Ações
 local validActions = {
     "fry", "bake", "cook", "prepare", "stir", "mix", "chop", 
     "cut", "pour", "form", "garnish", "boil", "add", "blend",
@@ -34,47 +34,20 @@ local function Log(texto, cor)
     end
 end
 
--- === SISTEMA DE CÂMERA GUIADA ===
-local activeCamConnection = nil
-
-local function LockCameraOn(targetInstance)
-    if activeCamConnection then activeCamConnection:Disconnect() end
-    Camera.CameraType = Enum.CameraType.Scriptable
-    
-    activeCamConnection = RunService.RenderStepped:Connect(function()
-        local char = LocalPlayer.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if hrp and targetInstance then
-            local targetPos = targetInstance:IsA("Model") and targetInstance:GetPivot().Position or targetInstance.Position
-            -- Fica nas costas do personagem (6 blocos atrás, 5 de altura) olhando para o centro do objeto
-            local camPos = hrp.Position - (hrp.CFrame.LookVector * 6) + Vector3.new(0, 5, 0)
-            Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(camPos, targetPos + Vector3.new(0, 1.5, 0)), 0.15)
-        end
-    end)
-end
-
-local function UnlockCamera()
-    if activeCamConnection then activeCamConnection:Disconnect(); activeCamConnection = nil end
-    Camera.CameraType = Enum.CameraType.Custom
-    local char = LocalPlayer.Character
-    if char then Camera.CameraSubject = char:FindFirstChild("Humanoid") end
-end
-
--- === MOVIMENTAÇÃO COM ANTI-TRANCAMENTO ===
+-- === MOVIMENTAÇÃO COM CÂMERA "OVER THE SHOULDER" ===
 local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
     local targetCF = targetInstance:IsA("Model") and targetInstance:GetPivot() or targetInstance.CFrame
     local targetPos = targetCF.Position
     
-    -- Para a 2.5 blocos de distância para garantir proximidade
     local direction = (hrp.Position - targetPos).Unit
-    local finalPos = targetPos + Vector3.new(direction.X * 2.5, 0, direction.Z * 2.5)
+    local finalPos = targetPos + Vector3.new(direction.X * distanceOffset, 0, direction.Z * distanceOffset)
     finalPos = Vector3.new(finalPos.X, hrp.Position.Y, finalPos.Z)
     
     Log("Indo para o objeto...", Color3.fromRGB(200, 200, 200))
-    humanoid.WalkSpeed = 16
     
-    -- Começa a focar a câmera no objeto enquanto anda
-    LockCameraOn(targetInstance)
+    Camera.CameraType = Enum.CameraType.Custom
+    Camera.CameraSubject = humanoid
+    humanoid.WalkSpeed = 16
     
     local arrived = false
     local timeout = 0
@@ -87,10 +60,10 @@ local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
         else
             humanoid:MoveTo(finalPos)
             
-            -- SISTEMA ANTI-TRANCAMENTO: Verifica se não saiu do lugar
+            -- Anti-Trancamento (Pulo)
             if (hrp.Position - lastPos).Magnitude < 0.2 then
                 stuckTicks = stuckTicks + 1
-                if stuckTicks > 5 then -- Se ficar parado por meio segundo, PULA!
+                if stuckTicks > 5 then 
                     humanoid.Jump = true
                     Log("Desatolando...", Color3.fromRGB(255, 150, 50))
                     stuckTicks = 0
@@ -104,10 +77,16 @@ local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
         task.wait(0.1)
     end
     
-    humanoid:MoveTo(hrp.Position) -- Freio instantâneo
+    humanoid:MoveTo(hrp.Position) 
+    task.wait(0.1)
     
-    -- Vira o boneco fisicamente de frente para o objeto
+    -- Vira o boneco de frente pro objeto
     hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
+    
+    -- A MÁGICA DA CÂMERA: Atrás (2.5), para Cima (2.5) e para a DIREITA (2.0)
+    -- Isso evita que o seu corpo bloqueie o Raycast da Interação!
+    local safeCamPos = hrp.Position - (hrp.CFrame.LookVector * 2.5) + (hrp.CFrame.RightVector * 2) + Vector3.new(0, 2.5, 0)
+    Camera.CFrame = CFrame.lookAt(safeCamPos, targetPos + Vector3.new(0, 1, 0))
 end
 
 local function PressE()
@@ -224,7 +203,6 @@ local function RunFarmCycle(hrp, hum, myId)
         if actionLbl then
             local act = actionLbl.Text:lower()
             
-            -- LÓGICA DO "EAT": Abandona e recomeça o ciclo
             if table.find(finishedActions, act) then
                 Log("Prato Finalizado Automaticamente!", Color3.fromRGB(50, 255, 50))
                 finished = true
@@ -303,13 +281,12 @@ local function RunFarmCycle(hrp, hum, myId)
                     end
                 end
                 
-                -- B) O BOTÃO AZUL (Com detecção imediata de Fim)
+                -- B) O BOTÃO AZUL
                 if equippedBtn and equippedBtn.Visible then
                     local currentActionLbl = equippedBtn:FindFirstChild("ActionLabel")
                     if currentActionLbl then
                         local currentAction = currentActionLbl.Text:lower()
                         
-                        -- FIM DO PRATO DETECTADO DURANTE O MINIGAME
                         if table.find(finishedActions, currentAction) then
                             Log("Pronto para '".. currentActionLbl.Text .."'! Reiniciando...", Color3.fromRGB(50, 255, 50))
                             finished = true
@@ -366,7 +343,7 @@ function _G.BloxburgChef.Start(foodName)
     local hum = char and char:FindFirstChild("Humanoid")
     if hum then hum.WalkSpeed = 16 end 
     
-    Log("GPS, Pulo Automático e Câmera Fixa Ativos", Color3.fromRGB(100, 200, 255))
+    Log("GPS Culinário e Câmera no Ombro Ativos", Color3.fromRGB(100, 200, 255))
     Log("=== FARM INICIADO: " .. selectedFood .. " ===", Color3.fromRGB(50, 255, 50))
     
     task.spawn(function()
@@ -375,7 +352,6 @@ function _G.BloxburgChef.Start(foodName)
             RunFarmCycle(hrp, hum, myId)
             task.wait(1)
         end
-        UnlockCamera() -- Garante que a câmera destrave se der erro
     end)
 end
 
@@ -386,7 +362,6 @@ function _G.BloxburgChef.Stop()
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChild("Humanoid")
     if hum then hum.WalkSpeed = 16; hum.JumpPower = 50 end
-    UnlockCamera()
     
     Log("=== FARM PARADO ===", Color3.fromRGB(255, 100, 100))
 end
