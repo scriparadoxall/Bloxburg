@@ -30,16 +30,25 @@ local function Log(texto, cor)
     if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog(texto, cor) else print("[Chef] " .. texto) end
 end
 
--- === SCANNER VISUAL BASEADO NAS SUAS PRINTS ===
+-- === LEITURA DE AÇÃO PELO CAMINHO ABSOLUTO (Sua descoberta!) ===
 local function GetCurrentAction()
-    -- Procura ESPECIFICAMENTE dentro da MainGUI, onde o botão real vive
-    local mainGui = PlayerGui:FindFirstChild("MainGUI")
-    if mainGui then
-        for _, obj in pairs(mainGui:GetDescendants()) do
-            if obj.Name == "ActionLabel" and obj:IsA("TextLabel") then
-                -- Garante que o texto não está vazio e que o pai (EquippedButton) está visível
-                if obj.Text ~= "" and obj.Parent and obj.Parent.Visible then
-                    return string.lower(obj.Text), obj.Parent
+    -- Caminho: PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer.ActionLabel
+    local hudGui = PlayerGui:FindFirstChild("HUDGui")
+    if hudGui then
+        local hotbar = hudGui:FindFirstChild("Hotbar")
+        if hotbar then
+            local layout = hotbar:FindFirstChild("LayoutContainer")
+            if layout then
+                local leftBtn = layout:FindFirstChild("LeftButtonContainer")
+                if leftBtn then
+                    local equippedContainer = leftBtn:FindFirstChild("EquippedContainer")
+                    if equippedContainer and equippedContainer.Visible then
+                        local actionLabel = equippedContainer:FindFirstChild("ActionLabel")
+                        if actionLabel and actionLabel.Text ~= "" then
+                            -- Retorna o texto minúsculo e o recipiente clicável
+                            return string.lower(actionLabel.Text), equippedContainer
+                        end
+                    end
                 end
             end
         end
@@ -63,7 +72,7 @@ local function ForceClick(element)
     VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + inset.Y, 0, false, game, 1)
 end
 
--- === FILTRO DE SEGURANÇA: LOTE ===
+-- === FILTRO DE SEGURANÇA: ENCONTRAR APENAS O SEU LOTE ===
 local function GetMyOwnPlot()
     local plots = workspace:FindFirstChild("Plots")
     if not plots then return nil end
@@ -152,7 +161,7 @@ function _G.BloxburgChef.Start(food)
     currentMacroId = currentMacroId + 1
     local myId = currentMacroId
     
-    Log("Farm Iniciado (Scanner de MainGUI Ativo)", Color3.fromRGB(50, 255, 50))
+    Log("Farm Iniciado (Pathing Exato)", Color3.fromRGB(50, 255, 50))
     
     task.spawn(function()
         while isRunning and currentMacroId == myId do
@@ -164,7 +173,7 @@ function _G.BloxburgChef.Start(food)
             
             while isRunning and currentMacroId == myId and not hasFood do
                 
-                -- Verifica se já tem comida antes de ir na geladeira
+                -- Verifica o Caminho Absoluto antes de ir na geladeira
                 local startActText, _ = GetCurrentAction()
                 if startActText then
                     for _, vAct in pairs(validActions) do
@@ -203,11 +212,11 @@ function _G.BloxburgChef.Start(food)
                         end
                     end
                     
-                    Log("Lendo a tela...", Color3.fromRGB(200, 200, 200))
+                    Log("Lendo a interface...", Color3.fromRGB(200, 200, 200))
                     for scan = 1, 40 do
                         if not isRunning or currentMacroId ~= myId then break end
                         
-                        -- Leitura com precisão cirúrgica graças à sua print
+                        -- Leitura Instantânea pelo Caminho Exato
                         local actText, _ = GetCurrentAction()
                         if actText then
                             for _, vAct in pairs(validActions) do
@@ -228,7 +237,7 @@ function _G.BloxburgChef.Start(food)
                         task.wait(1.5)
                     end
                 else
-                    Log("Não achei a geladeira!", Color3.fromRGB(255, 50, 50))
+                    Log("Não achei a geladeira no seu terreno!", Color3.fromRGB(255, 50, 50))
                     task.wait(3)
                 end
             end
@@ -259,6 +268,7 @@ function _G.BloxburgChef.Start(food)
                     if MoveToStation(targetName) then
                         task.wait(0.5)
                         
+                        -- Limpeza
                         local interactUI = PlayerGui:FindFirstChild("_interactUI")
                         if interactUI then
                             for _, el in pairs(interactUI:GetDescendants()) do
@@ -271,11 +281,11 @@ function _G.BloxburgChef.Start(food)
                             end
                         end
                         
+                        -- Minigame (Mantido a busca na FloatingGui para as letras)
                         local stageStart = tick()
                         while tick() - stageStart < 20 do
                             if not isRunning or currentMacroId ~= myId then break end
                             
-                            -- Clica nas letrinhas ou interações da FloatingGui (Print 25739)
                             local float = PlayerGui:FindFirstChild("FloatingGui")
                             if float then
                                 for _, b in pairs(float:GetDescendants()) do
@@ -298,6 +308,7 @@ function _G.BloxburgChef.Start(food)
                                 end
                             end
                             
+                            -- Usa o Caminho Exato para saber se a etapa mudou
                             local currentAct, _ = GetCurrentAction()
                             if not currentAct then break end 
                             
