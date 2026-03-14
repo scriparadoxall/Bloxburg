@@ -30,9 +30,26 @@ local function Log(texto, cor)
     if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog(texto, cor) else print("[Chef] " .. texto) end
 end
 
+-- === SCANNER VISUAL BASEADO NAS SUAS PRINTS ===
+local function GetCurrentAction()
+    -- Procura ESPECIFICAMENTE dentro da MainGUI, onde o botão real vive
+    local mainGui = PlayerGui:FindFirstChild("MainGUI")
+    if mainGui then
+        for _, obj in pairs(mainGui:GetDescendants()) do
+            if obj.Name == "ActionLabel" and obj:IsA("TextLabel") then
+                -- Garante que o texto não está vazio e que o pai (EquippedButton) está visível
+                if obj.Text ~= "" and obj.Parent and obj.Parent.Visible then
+                    return string.lower(obj.Text), obj.Parent
+                end
+            end
+        end
+    end
+    return nil, nil
+end
+
 -- === CLIQUE FORÇADO ===
 local function ForceClick(element)
-    if not element or not element.Visible then return end
+    if not element then return end
     pcall(function()
         if element.MouseButton1Click then for _, conn in pairs(getconnections(element.MouseButton1Click)) do conn:Fire() end end
         if element.Activated then for _, conn in pairs(getconnections(element.Activated)) do conn:Fire() end end
@@ -46,7 +63,7 @@ local function ForceClick(element)
     VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + inset.Y, 0, false, game, 1)
 end
 
--- === FILTRO DE SEGURANÇA: ENCONTRAR APENAS O SEU LOTE ===
+-- === FILTRO DE SEGURANÇA: LOTE ===
 local function GetMyOwnPlot()
     local plots = workspace:FindFirstChild("Plots")
     if not plots then return nil end
@@ -135,21 +152,35 @@ function _G.BloxburgChef.Start(food)
     currentMacroId = currentMacroId + 1
     local myId = currentMacroId
     
-    Log("Farm Iniciado (Com Validação de Comida)", Color3.fromRGB(50, 255, 50))
+    Log("Farm Iniciado (Scanner de MainGUI Ativo)", Color3.fromRGB(50, 255, 50))
     
     task.spawn(function()
         while isRunning and currentMacroId == myId do
             
             -- ==========================================
-            -- 1. FASE DE PEGAR COMIDA (LOOP DE VALIDAÇÃO)
+            -- 1. FASE DE PEGAR COMIDA
             -- ==========================================
             local hasFood = false
             
             while isRunning and currentMacroId == myId and not hasFood do
+                
+                -- Verifica se já tem comida antes de ir na geladeira
+                local startActText, _ = GetCurrentAction()
+                if startActText then
+                    for _, vAct in pairs(validActions) do
+                        if string.find(startActText, string.lower(vAct)) then
+                            hasFood = true
+                            Log("Comida já na mão! (" .. startActText .. ")", Color3.fromRGB(50, 255, 50))
+                            break
+                        end
+                    end
+                end
+                
+                if hasFood then break end
+
                 if MoveToStation("Icebox Fridge") then
                     task.wait(1)
                     
-                    -- Tenta clicar em "Take Ingredients"
                     local interactUI = PlayerGui:FindFirstChild("_interactUI")
                     if interactUI then
                         for _, el in pairs(interactUI:GetDescendants()) do
@@ -162,7 +193,6 @@ function _G.BloxburgChef.Start(food)
                     
                     task.wait(1.5)
                     
-                    -- Tenta clicar na comida na lista
                     local listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)", true)
                     if listMenu then
                         local foodBtn = listMenu:FindFirstChild(selectedFood .. "_Button", true)
@@ -173,38 +203,32 @@ function _G.BloxburgChef.Start(food)
                         end
                     end
                     
-                    -- VALIDAÇÃO SCANNER (Espera até 4 segundos a comida ir para a mão)
-                    Log("Lendo as mãos...", Color3.fromRGB(200, 200, 200))
+                    Log("Lendo a tela...", Color3.fromRGB(200, 200, 200))
                     for scan = 1, 40 do
                         if not isRunning or currentMacroId ~= myId then break end
                         
-                        local equipped = PlayerGui:FindFirstChild("EquippedButton", true)
-                        if equipped and equipped.Visible then
-                            local actLbl = equipped:FindFirstChild("ActionLabel")
-                            if actLbl and actLbl.Text ~= "" then
-                                -- Converte tudo para minúsculo para não importar se está "Fry", "FRY" ou " fry "
-                                local textInHand = string.lower(actLbl.Text) 
-                                
-                                for _, vAct in pairs(validActions) do
-                                    if string.find(textInHand, string.lower(vAct)) then
-                                        hasFood = true
-                                        Log("Comida (" .. actLbl.Text .. ") confirmada!", Color3.fromRGB(50, 255, 50))
-                                        break
-                                    end
+                        -- Leitura com precisão cirúrgica graças à sua print
+                        local actText, _ = GetCurrentAction()
+                        if actText then
+                            for _, vAct in pairs(validActions) do
+                                if string.find(actText, string.lower(vAct)) then
+                                    hasFood = true
+                                    Log("Comida confirmada: " .. actText, Color3.fromRGB(50, 255, 50))
+                                    break
                                 end
                             end
                         end
                         
                         if hasFood then break end
-                        task.wait(0.1) -- Espera 0.1s e olha a mão de novo
+                        task.wait(0.1)
                     end
                     
                     if not hasFood then
-                        Log("Mão vazia. Falha ao pegar comida. Tentando novamente...", Color3.fromRGB(255, 100, 100))
-                        task.wait(1.5) -- Pausa antes de tentar abrir a geladeira de novo
+                        Log("Mão vazia. Tentando de novo...", Color3.fromRGB(255, 100, 100))
+                        task.wait(1.5)
                     end
                 else
-                    Log("Não achei a geladeira no seu lote!", Color3.fromRGB(255, 50, 50))
+                    Log("Não achei a geladeira!", Color3.fromRGB(255, 50, 50))
                     task.wait(3)
                 end
             end
@@ -215,86 +239,80 @@ function _G.BloxburgChef.Start(food)
             local finished = false
             
             while isRunning and currentMacroId == myId and not finished do
-                local equipped = PlayerGui:FindFirstChild("EquippedButton", true)
-                if equipped and equipped.Visible then
-                    local actLbl = equipped:FindFirstChild("ActionLabel")
-                    if actLbl then
-                        local act = string.lower(actLbl.Text) -- Sempre minúsculo
-                        
-                        -- Verifica se o prato acabou
-                        for _, fAct in pairs(finishedActions) do
-                            if string.find(act, string.lower(fAct)) then
-                                Log("Prato Finalizado!", Color3.fromRGB(50, 255, 50))
-                                finished = true
-                                break
-                            end
+                local actText, equippedBtn = GetCurrentAction()
+                
+                if actText and equippedBtn then
+                    for _, fAct in pairs(finishedActions) do
+                        if string.find(actText, string.lower(fAct)) then
+                            Log("Prato Finalizado!", Color3.fromRGB(50, 255, 50))
+                            finished = true
+                            break
                         end
-                        if finished then break end
+                    end
+                    if finished then break end
+                    
+                    local isStove = string.find(actText, "fry") or string.find(actText, "boil") or string.find(actText, "cook") or string.find(actText, "bake") or string.find(actText, "fritar") or string.find(actText, "ferver") or string.find(actText, "cozinhar") or string.find(actText, "assar")
+                    local targetName = isStove and "Basic Stove" or "Basic Counter"
+                    
+                    Log("Indo para " .. targetName .. " (" .. actText .. ")", Color3.fromRGB(150, 200, 255))
+                    
+                    if MoveToStation(targetName) then
+                        task.wait(0.5)
                         
-                        -- Descobre se precisa de Fogão ou Balcão
-                        local isStove = string.find(act, "fry") or string.find(act, "boil") or string.find(act, "cook") or string.find(act, "bake") or string.find(act, "fritar") or string.find(act, "ferver") or string.find(act, "cozinhar") or string.find(act, "assar")
-                        local targetName = isStove and "Basic Stove" or "Basic Counter"
-                        
-                        Log("GPS: Indo para " .. targetName .. " (" .. actLbl.Text .. ")", Color3.fromRGB(150, 200, 255))
-                        
-                        if MoveToStation(targetName) then
-                            task.wait(0.5)
-                            
-                            -- LIMPEZA DE SUJEIRA
-                            local interactUI = PlayerGui:FindFirstChild("_interactUI")
-                            if interactUI then
-                                for _, el in pairs(interactUI:GetDescendants()) do
-                                    if el:IsA("TextLabel") and (string.lower(el.Text) == "clean" or string.lower(el.Text) == "limpar") then
-                                        Log("Limpando sujeira...", Color3.fromRGB(255, 150, 50))
-                                        ForceClick(el.Parent)
-                                        task.wait(9)
-                                        break
-                                    end
+                        local interactUI = PlayerGui:FindFirstChild("_interactUI")
+                        if interactUI then
+                            for _, el in pairs(interactUI:GetDescendants()) do
+                                if el:IsA("TextLabel") and (string.lower(el.Text) == "clean" or string.lower(el.Text) == "limpar") then
+                                    Log("Limpando sujeira...", Color3.fromRGB(255, 150, 50))
+                                    ForceClick(el.Parent)
+                                    task.wait(9)
+                                    break
                                 end
                             end
+                        end
+                        
+                        local stageStart = tick()
+                        while tick() - stageStart < 20 do
+                            if not isRunning or currentMacroId ~= myId then break end
                             
-                            -- MINIGAME DE CLIQUE
-                            local stageStart = tick()
-                            while tick() - stageStart < 20 do
-                                if not isRunning or currentMacroId ~= myId then break end
-                                
-                                local float = PlayerGui:FindFirstChild("FloatingGui")
-                                if float then
-                                    for _, b in pairs(float:GetDescendants()) do
-                                        if b:IsA("GuiButton") and b.Visible then
-                                            local letra = nil
-                                            for _, c in pairs(b:GetDescendants()) do
-                                                if c:IsA("TextLabel") and string.match(c.Text, "^%s*([A-Za-z])%s*$") then
-                                                    letra = string.upper(string.match(c.Text, "^%s*([A-Za-z])%s*$"))
-                                                    break
-                                                end
+                            -- Clica nas letrinhas ou interações da FloatingGui (Print 25739)
+                            local float = PlayerGui:FindFirstChild("FloatingGui")
+                            if float then
+                                for _, b in pairs(float:GetDescendants()) do
+                                    if b:IsA("GuiButton") and b.Visible then
+                                        local letra = nil
+                                        for _, c in pairs(b:GetDescendants()) do
+                                            if c:IsA("TextLabel") and string.match(c.Text, "^%s*([A-Za-z])%s*$") then
+                                                letra = string.upper(string.match(c.Text, "^%s*([A-Za-z])%s*$"))
+                                                break
                                             end
-                                            if letra and letra ~= "E" then
-                                                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode[letra], false, game)
-                                                task.wait(0.05)
-                                                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode[letra], false, game)
-                                            else
-                                                ForceClick(b)
-                                            end
+                                        end
+                                        if letra and letra ~= "E" then
+                                            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode[letra], false, game)
+                                            task.wait(0.05)
+                                            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode[letra], false, game)
+                                        else
+                                            ForceClick(b)
                                         end
                                     end
                                 end
-                                
-                                -- Verifica se a ação mudou ou acabou no meio do minigame
-                                local currentAct = string.lower(actLbl.Text)
-                                local endEarly = false
-                                for _, fAct in pairs(finishedActions) do
-                                    if string.find(currentAct, string.lower(fAct)) then
-                                        finished = true
-                                        endEarly = true
-                                        break
-                                    end
-                                end
-                                
-                                if endEarly or currentAct ~= act then break end
-                                
-                                task.wait(0.2)
                             end
+                            
+                            local currentAct, _ = GetCurrentAction()
+                            if not currentAct then break end 
+                            
+                            local endEarly = false
+                            for _, fAct in pairs(finishedActions) do
+                                if string.find(currentAct, string.lower(fAct)) then
+                                    finished = true
+                                    endEarly = true
+                                    break
+                                end
+                            end
+                            
+                            if endEarly or currentAct ~= actText then break end
+                            
+                            task.wait(0.2)
                         end
                     end
                 end
