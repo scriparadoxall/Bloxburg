@@ -2,21 +2,26 @@ local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 
--- === 1. CARREGAR O CÉREBRO (BACK-END) DO GITHUB ===
--- Nota: Eu peguei o link que você mandou e modifiquei para o formato "Raw" para o Roblox conseguir ler o código puro.
-local backendURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/BloxburgFood"
+-- Carrega o Motor direto do GitHub com Bypass de Cache
+-- O "tick()" engana o GitHub para ele não usar uma versão antiga que ficou salva na memória.
+local backendURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/BloxburgFood?t=" .. tostring(tick())
 
-local success, response = pcall(function()
-    loadstring(game:HttpGet(backendURL))()
-end)
+local code = game:HttpGet(backendURL)
+local loadFunc, loadErr = loadstring(code)
 
-if not success or not getgenv().BloxburgChef then
-    warn("ERRO FATAL: Falha ao carregar o motor do GitHub. Verifique o link ou a sua internet.")
-    warn("Detalhes do erro: " .. tostring(response))
+if loadFunc then
+    loadFunc() -- Instala as funções na memória
+else
+    warn("ERRO CRÍTICO NO CÓDIGO DA COMIDA: " .. tostring(loadErr))
     return
 end
 
--- === 2. SISTEMA ANTI-DUPLICAÇÃO UI ===
+if not _G.BloxburgChef then
+    warn("ERRO FATAL: O arquivo BloxburgFood foi carregado, mas a tabela _G.BloxburgChef não foi criada.")
+    return
+end
+
+-- === SISTEMA ANTI-DUPLICAÇÃO UI ===
 pcall(function() if CoreGui:FindFirstChild("Scriparadoxall") then CoreGui.Scriparadoxall:Destroy() end end)
 pcall(function() if Players.LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("Scriparadoxall") then Players.LocalPlayer.PlayerGui.Scriparadoxall:Destroy() end end)
 
@@ -34,13 +39,11 @@ MainFrame.ClipsDescendants = false
 MainFrame.Active = true
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
 
--- === SISTEMA DE ARRASTAR ===
 local dragging, dragInput, dragStart, startPos
 MainFrame.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = true; dragStart = input.Position; startPos = MainFrame.Position end end)
 game:GetService("UserInputService").InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + (input.Position - dragStart).X, startPos.Y.Scale, startPos.Y.Offset + (input.Position - dragStart).Y) end end)
 MainFrame.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
 
--- === ELEMENTOS VISUAIS ===
 local Title = Instance.new("TextLabel", MainFrame)
 Title.BackgroundTransparency = 1; Title.Size = UDim2.new(1, -40, 0, 40); Title.Position = UDim2.new(0, 15, 0, 0)
 Title.Font = Enum.Font.GothamBold; Title.Text = "Scriparadoxall Hub"; Title.TextColor3 = Color3.fromRGB(255, 255, 255); Title.TextSize = 18; Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -73,24 +76,21 @@ OpenButton.MouseButton1Click:Connect(function()
     for _, child in pairs(MainFrame:GetChildren()) do if child:IsA("GuiObject") then child.Visible = true end end
 end)
 
--- === LOG PANEL E COMUNICAÇÃO ===
 local LogPanel = Instance.new("ScrollingFrame", MainFrame)
 LogPanel.BackgroundColor3 = Color3.fromRGB(12, 12, 12); LogPanel.Position = UDim2.new(0, 190, 0, 50); LogPanel.Size = UDim2.new(0, 340, 0, 180); LogPanel.ScrollBarThickness = 4; LogPanel.BorderSizePixel = 0
 Instance.new("UICorner", LogPanel).CornerRadius = UDim.new(0, 6)
 local LogLayout = Instance.new("UIListLayout", LogPanel); LogLayout.SortOrder = Enum.SortOrder.LayoutOrder; LogLayout.Padding = UDim.new(0, 2)
 
 local logCount = 0
--- Sobrescreve a função global para que o motor na nuvem escreva neste painel
-getgenv().BloxburgChef_AddLog = function(texto, cor)
+_G.BloxburgChef_AddLog = function(texto, cor)
     logCount = logCount + 1
     local newLog = Instance.new("TextLabel", LogPanel)
     newLog.BackgroundTransparency = 1; newLog.Size = UDim2.new(1, -10, 0, 16); newLog.Font = Enum.Font.Code; newLog.Text = "[" .. os.date("%H:%M") .. "] " .. texto; newLog.TextColor3 = cor or Color3.fromRGB(200, 200, 200); newLog.TextSize = 11; newLog.TextXAlignment = Enum.TextXAlignment.Left; newLog.LayoutOrder = logCount
     LogPanel.CanvasSize = UDim2.new(0, 0, 0, LogLayout.AbsoluteContentSize.Y)
     LogPanel.CanvasPosition = Vector2.new(0, LogLayout.AbsoluteContentSize.Y)
 end
-getgenv().BloxburgChef_AddLog("Módulos conectados via GitHub!", Color3.fromRGB(50, 255, 255))
+_G.BloxburgChef_AddLog("Cérebro carregado via GitHub!", Color3.fromRGB(50, 255, 255))
 
--- === MENU DE COMIDAS ===
 local selectedFoodUI = "Hot Dogs"
 local FoodBtn = Instance.new("TextButton", MainFrame)
 FoodBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); FoodBtn.Position = UDim2.new(0, 15, 0, 50); FoodBtn.Size = UDim2.new(0, 160, 0, 35)
@@ -111,7 +111,6 @@ end
 FoodLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() FoodListPanel.CanvasSize = UDim2.new(0, 0, 0, FoodLayout.AbsoluteContentSize.Y) end)
 FoodBtn.MouseButton1Click:Connect(function() FoodListPanel.Visible = not FoodListPanel.Visible end)
 
--- === BOTÃO DE COMANDAR O CÉREBRO ===
 local FarmBtn = Instance.new("TextButton", MainFrame)
 FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40); FarmBtn.Position = UDim2.new(0, 15, 0, 95); FarmBtn.Size = UDim2.new(0, 160, 0, 40)
 FarmBtn.Font = Enum.Font.GothamBold; FarmBtn.Text = "▶ Iniciar Farm"; FarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255); FarmBtn.TextSize = 14
@@ -120,19 +119,16 @@ Instance.new("UICorner", FarmBtn).CornerRadius = UDim.new(0, 6)
 local isUIActive = false
 FarmBtn.MouseButton1Click:Connect(function()
     if isUIActive then
-        -- Envia a ordem de PARAR para o Motor na memória
         isUIActive = false
         FarmBtn.Text = "▶ Iniciar Farm"
         FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
-        getgenv().BloxburgChef.Stop()
+        _G.BloxburgChef.Stop()
     else
-        -- Envia a ordem de INICIAR para o Motor na memória
         isUIActive = true
         FarmBtn.Text = "🛑 Parar Farm"
         FarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
         FoodListPanel.Visible = false
         MinimizeHub()
-        getgenv().BloxburgChef.Start(selectedFoodUI)
+        _G.BloxburgChef.Start(selectedFoodUI)
     end
 end)
- 
