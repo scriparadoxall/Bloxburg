@@ -12,7 +12,7 @@ local isRunning = false
 local currentMacroId = 0
 local selectedFood = "Hot Dogs"
 
--- Dicionário Bilíngue de Ações Válidas para Clicar
+-- Dicionário Bilíngue de Ações de Cozinhar
 local validActions = {
     "fry", "bake", "cook", "prepare", "stir", "mix", "chop", 
     "cut", "pour", "form", "garnish", "boil", "add", "blend",
@@ -21,10 +21,10 @@ local validActions = {
     "adicionar", "bater"
 }
 
--- Palavras que indicam que o prato ACABOU
+-- O SEGREDO DO "EAT": Quando aparecer isso, o prato ACABOU e ele recomeça
 local finishedActions = {
-    "place", "take portion", "eat", "store",
-    "colocar", "pegar porção", "comer", "guardar"
+    "eat", "place", "take portion", "store",
+    "comer", "colocar", "pegar porção", "guardar"
 }
 
 -- Sistema de Logs
@@ -36,23 +36,25 @@ local function Log(texto, cor)
     end
 end
 
--- Movimentação Perfeita
+-- === MOVIMENTAÇÃO E CÂMERA CINEMATOGRÁFICA ===
 local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
     local targetCF = targetInstance:IsA("Model") and targetInstance:GetPivot() or targetInstance.CFrame
     local targetPos = targetCF.Position
     local standPos = (targetCF * CFrame.new(0, 0, distanceOffset)).Position
     local finalPos = Vector3.new(standPos.X, hrp.Position.Y, standPos.Z)
     
-    Log("Caminhando até o alvo...", Color3.fromRGB(200, 200, 200))
+    Log("Indo para o objeto...", Color3.fromRGB(200, 200, 200))
     humanoid.WalkSpeed = 16
     humanoid:MoveTo(finalPos)
     
     local arrived = false
     local timeout = 0
+    
+    -- Câmera gira suavemente enquanto o boneco anda
     local camConnection = RunService.RenderStepped:Connect(function()
         if (hrp.Position - finalPos).Magnitude > 1.5 then
-            local backPos = hrp.Position - (hrp.CFrame.LookVector * 7) + Vector3.new(0, 5, 0)
-            Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(backPos, hrp.Position + hrp.CFrame.LookVector * 5), 0.1)
+            local backPos = hrp.Position - (hrp.CFrame.LookVector * 6) + Vector3.new(0, 4, 0)
+            Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(backPos, targetPos), 0.1)
         else
             arrived = true
         end
@@ -65,11 +67,15 @@ local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
     end
     
     camConnection:Disconnect()
-    humanoid:MoveTo(hrp.Position) 
+    humanoid:MoveTo(hrp.Position) -- Freio exato
     
+    -- Vira o boneco de frente para o fogão/geladeira
     hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
+    
+    -- Trava a câmera nas costas olhando para o objeto
     Camera.CameraType = Enum.CameraType.Custom
-    Camera.CFrame = CFrame.lookAt(hrp.Position - (hrp.CFrame.LookVector * 5) + Vector3.new(0, 3, 0), targetPos)
+    local finalCamPos = hrp.Position - (hrp.CFrame.LookVector * 5) + Vector3.new(0, 3, 0)
+    Camera.CFrame = CFrame.lookAt(finalCamPos, targetPos)
 end
 
 local function PressE()
@@ -160,26 +166,21 @@ local function RunFarmCycle(hrp, hum, myId)
         end
     end
 
-    -- ==========================================
-    -- VERIFICAÇÃO INTELIGENTE SE PEGOU A COMIDA
-    -- ==========================================
+    -- Confirma se pegou a comida
     local hasFood = false
     local equippedBtn = nil
-    for w = 1, 40 do -- Espera até 4 segundos pra comida aparecer nas mãos
+    for w = 1, 40 do
         if not isRunning or currentMacroId ~= myId then return false end
         equippedBtn = PlayerGui:FindFirstChild("EquippedButton", true)
         if equippedBtn and equippedBtn.Visible then
             hasFood = true
-            Log("Comida confirmada nas mãos!", Color3.fromRGB(50, 255, 50))
+            Log("Comida em mãos!", Color3.fromRGB(50, 255, 50))
             break
         end
         task.wait(0.1)
     end
 
-    if not hasFood then
-        Log("ERRO: O item não foi parar na mão.", Color3.fromRGB(255, 50, 50))
-        return false
-    end
+    if not hasFood then return false end
 
     -- ==========================================
     -- 2. ROTAS E ESTAÇÕES (O CÉREBRO)
@@ -193,16 +194,16 @@ local function RunFarmCycle(hrp, hum, myId)
         if actionLbl then
             local act = actionLbl.Text:lower()
             
-            -- Se a palavra indicar fim (Place, Take Portion), termina!
+            -- LÓGICA DO "EAT" (Se o prato estiver pronto, recomeça o ciclo)
             if table.find(finishedActions, act) then
-                Log("Prato Finalizado Automaticamente!", Color3.fromRGB(50, 255, 50))
+                Log("Apareceu '".. actionLbl.Text .."'! Prato Finalizado!", Color3.fromRGB(50, 255, 50))
+                Log("Reiniciando ciclo para a próxima receita...", Color3.fromRGB(255, 255, 100))
                 finished = true
                 break
             end
             
-            Log("GPS: Precisamos " .. act, Color3.fromRGB(150, 200, 255))
+            Log("GPS: Precisamos " .. actionLbl.Text, Color3.fromRGB(150, 200, 255))
             
-            -- Define a estação pelo texto
             if string.find(act, "fry") or string.find(act, "boil") or string.find(act, "cook") or string.find(act, "bake") or string.find(act, "fritar") or string.find(act, "ferver") or string.find(act, "cozinhar") or string.find(act, "assar") then
                 targetStationName = "Basic Stove"
             else
@@ -219,15 +220,14 @@ local function RunFarmCycle(hrp, hum, myId)
         end
         
         if station then
+            -- Boneco anda, se vira de frente para a estação e câmera foca nela
             WalkToTarget(hrp, hum, station, -3.5)
             task.wait(0.5); PressE(); task.wait(1)
             
-            -- Tratamento de Erro do Jogo (Fallback)
             local msgBox = PlayerGui:FindFirstChild("MessageBox", true)
             if msgBox and msgBox.Visible then
                 ForceClick(msgBox:FindFirstChild("ButtonFrame"):FindFirstChildWhichIsA("GuiButton", true))
-                Log("Erro de estação contornado.", Color3.fromRGB(255, 200, 100))
-                -- Deixa o GPS corrigir na próxima volta do loop
+                Log("Aviso de estação ignorado.", Color3.fromRGB(255, 200, 100))
                 continue
             end
             
@@ -236,16 +236,16 @@ local function RunFarmCycle(hrp, hum, myId)
             if interact then
                 for _, el in pairs(interact:GetDescendants()) do
                     if el:IsA("TextLabel") and (el.Text:lower() == "clean" or el.Text:lower() == "limpar") then
-                        Log("Estação suja! Limpando...", Color3.fromRGB(255, 150, 50))
+                        Log("Limpando sujeira...", Color3.fromRGB(255, 150, 50))
                         ForceClick(el.Parent); task.wait(9)
-                        Log("Limpo! Recomeçando...", Color3.fromRGB(150, 255, 150))
+                        Log("Limpo! Recomeçando prato...", Color3.fromRGB(150, 255, 150))
                         return true
                     end
                 end
             end
             
             -- ==========================================
-            -- MINIGAME
+            -- MINIGAME DE COZINHAR
             -- ==========================================
             local ticks = 0
             local maxRecipeTicks = 1200 
@@ -255,7 +255,7 @@ local function RunFarmCycle(hrp, hum, myId)
                 if not isRunning or currentMacroId ~= myId then return false end
                 local acted = false
                 
-                -- A) TELA CENTRAL DE LETRAS
+                -- A) TELA CENTRAL (Teclado)
                 local floating = PlayerGui:FindFirstChild("FloatingGui")
                 if floating then
                     for _, btn in pairs(floating:GetDescendants()) do
@@ -277,14 +277,15 @@ local function RunFarmCycle(hrp, hum, myId)
                     end
                 end
                 
-                -- B) O BOTÃO AZUL (Que você descobriu!)
+                -- B) O BOTÃO AZUL
                 if equippedBtn and equippedBtn.Visible then
                     local currentActionLbl = equippedBtn:FindFirstChild("ActionLabel")
                     if currentActionLbl then
                         local currentAction = currentActionLbl.Text:lower()
                         
-                        -- Se o botão azul disser "Place" ou "Take", o prato acabou! Quebra o minigame.
+                        -- LÓGICA DO "EAT" AQUI TAMBÉM (Quebra o minigame imediatamente)
                         if table.find(finishedActions, currentAction) then
+                            Log("Pronto para '".. currentActionLbl.Text .."'! Recomeçando ciclo.", Color3.fromRGB(50, 255, 50))
                             finished = true
                             break
                         end
@@ -296,7 +297,7 @@ local function RunFarmCycle(hrp, hum, myId)
                     end
                 end
                 
-                -- C) MÃOZINHAS AZUIS FLUTUANTES (Backup)
+                -- C) MÃOZINHAS AZUIS (Backup)
                 local interactUI = PlayerGui:FindFirstChild("_interactUI")
                 if interactUI and not acted then
                     for _, el in pairs(interactUI:GetDescendants()) do
@@ -308,20 +309,17 @@ local function RunFarmCycle(hrp, hum, myId)
                     end
                 end
                 
-                -- CONTROLE DE OCIOSIDADE (15s limite)
                 if acted then
                     ticks = 0; task.wait(0.4)
                 else
                     ticks = ticks + 1
                     if ticks > 150 then 
-                        Log("Sem botões por 15s. Avançando.", Color3.fromRGB(50, 255, 50))
-                        break -- Quebra o minigame, o loop principal vai ler a Label de novo pra saber pra onde ir
+                        Log("Sem botões por 15s. Reposicionando...", Color3.fromRGB(200, 200, 200))
+                        break
                     end
                 end
                 
-                -- Se a Label mandou finalizar (do check B lá em cima)
                 if finished then break end
-                
                 recipeTickCount = recipeTickCount + 1
                 task.wait(0.1)
             end
