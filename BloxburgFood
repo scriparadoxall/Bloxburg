@@ -12,7 +12,7 @@ local isRunning = false
 local currentMacroId = 0
 local selectedFood = "Hot Dogs"
 
--- Dicionário Bilíngue de Ações de Cozinhar
+-- Dicionário Bilíngue de Ações
 local validActions = {
     "fry", "bake", "cook", "prepare", "stir", "mix", "chop", 
     "cut", "pour", "form", "garnish", "boil", "add", "blend",
@@ -21,13 +21,11 @@ local validActions = {
     "adicionar", "bater"
 }
 
--- O SEGREDO DO "EAT": Quando aparecer isso, o prato ACABOU e ele recomeça
 local finishedActions = {
     "eat", "place", "take portion", "store",
     "comer", "colocar", "pegar porção", "guardar"
 }
 
--- Sistema de Logs
 local function Log(texto, cor)
     if _G.BloxburgChef_AddLog then
         _G.BloxburgChef_AddLog(texto, cor)
@@ -36,25 +34,29 @@ local function Log(texto, cor)
     end
 end
 
--- === MOVIMENTAÇÃO E CÂMERA CINEMATOGRÁFICA ===
+-- === CÂMERA CINEMATOGRÁFICA CORRIGIDA ===
 local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
     local targetCF = targetInstance:IsA("Model") and targetInstance:GetPivot() or targetInstance.CFrame
     local targetPos = targetCF.Position
     local standPos = (targetCF * CFrame.new(0, 0, distanceOffset)).Position
     local finalPos = Vector3.new(standPos.X, hrp.Position.Y, standPos.Z)
     
-    Log("Indo para o objeto...", Color3.fromRGB(200, 200, 200))
+    Log("Caminhando e focando câmera...", Color3.fromRGB(200, 200, 200))
     humanoid.WalkSpeed = 16
     humanoid:MoveTo(finalPos)
+    
+    -- O SEGREDO: Trava a câmera da engine para o script assumir o volante!
+    Camera.CameraType = Enum.CameraType.Scriptable
     
     local arrived = false
     local timeout = 0
     
-    -- Câmera gira suavemente enquanto o boneco anda
+    -- Gira a câmera focando a lente SEMPRE no objeto alvo
     local camConnection = RunService.RenderStepped:Connect(function()
         if (hrp.Position - finalPos).Magnitude > 1.5 then
             local backPos = hrp.Position - (hrp.CFrame.LookVector * 6) + Vector3.new(0, 4, 0)
-            Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(backPos, targetPos), 0.1)
+            local goalCF = CFrame.lookAt(backPos, targetPos)
+            Camera.CFrame = Camera.CFrame:Lerp(goalCF, 0.1)
         else
             arrived = true
         end
@@ -67,14 +69,18 @@ local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
     end
     
     camConnection:Disconnect()
-    humanoid:MoveTo(hrp.Position) -- Freio exato
+    humanoid:MoveTo(hrp.Position) 
     
-    -- Vira o boneco de frente para o fogão/geladeira
+    -- Gira o boneco
     hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
     
-    -- Trava a câmera nas costas olhando para o objeto
-    Camera.CameraType = Enum.CameraType.Custom
+    -- Calcula a posição exata da câmera nas costas
     local finalCamPos = hrp.Position - (hrp.CFrame.LookVector * 5) + Vector3.new(0, 3, 0)
+    Camera.CFrame = CFrame.lookAt(finalCamPos, targetPos)
+    
+    -- Devolve o controle pro Roblox, mas injeta o nosso novo ângulo!
+    Camera.CameraType = Enum.CameraType.Custom
+    task.wait(0.05)
     Camera.CFrame = CFrame.lookAt(finalCamPos, targetPos)
 end
 
@@ -166,7 +172,6 @@ local function RunFarmCycle(hrp, hum, myId)
         end
     end
 
-    -- Confirma se pegou a comida
     local hasFood = false
     local equippedBtn = nil
     for w = 1, 40 do
@@ -188,16 +193,13 @@ local function RunFarmCycle(hrp, hum, myId)
     local finished = false
     
     while isRunning and currentMacroId == myId and not finished do
-        -- LÊ O RÓTULO PARA DECIDIR O DESTINO
         local targetStationName = "Basic Counter"
         local actionLbl = equippedBtn:FindFirstChild("ActionLabel")
         if actionLbl then
             local act = actionLbl.Text:lower()
             
-            -- LÓGICA DO "EAT" (Se o prato estiver pronto, recomeça o ciclo)
             if table.find(finishedActions, act) then
                 Log("Apareceu '".. actionLbl.Text .."'! Prato Finalizado!", Color3.fromRGB(50, 255, 50))
-                Log("Reiniciando ciclo para a próxima receita...", Color3.fromRGB(255, 255, 100))
                 finished = true
                 break
             end
@@ -220,18 +222,15 @@ local function RunFarmCycle(hrp, hum, myId)
         end
         
         if station then
-            -- Boneco anda, se vira de frente para a estação e câmera foca nela
             WalkToTarget(hrp, hum, station, -3.5)
             task.wait(0.5); PressE(); task.wait(1)
             
             local msgBox = PlayerGui:FindFirstChild("MessageBox", true)
             if msgBox and msgBox.Visible then
                 ForceClick(msgBox:FindFirstChild("ButtonFrame"):FindFirstChildWhichIsA("GuiButton", true))
-                Log("Aviso de estação ignorado.", Color3.fromRGB(255, 200, 100))
                 continue
             end
             
-            -- VERIFICA SE ESTÁ SUJO
             local interact = PlayerGui:FindFirstChild("_interactUI")
             if interact then
                 for _, el in pairs(interact:GetDescendants()) do
@@ -283,9 +282,8 @@ local function RunFarmCycle(hrp, hum, myId)
                     if currentActionLbl then
                         local currentAction = currentActionLbl.Text:lower()
                         
-                        -- LÓGICA DO "EAT" AQUI TAMBÉM (Quebra o minigame imediatamente)
                         if table.find(finishedActions, currentAction) then
-                            Log("Pronto para '".. currentActionLbl.Text .."'! Recomeçando ciclo.", Color3.fromRGB(50, 255, 50))
+                            Log("Pronto para '".. currentActionLbl.Text .."'!", Color3.fromRGB(50, 255, 50))
                             finished = true
                             break
                         end
