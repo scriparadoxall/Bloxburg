@@ -34,19 +34,19 @@ local function Log(texto, cor)
     end
 end
 
--- === MOVIMENTAÇÃO E CÂMERA 100% FOCADA ===
-local function WalkToTarget(hrp, humanoid, targetInstance)
+-- === MOVIMENTAÇÃO E CÂMERA CORRIGIDA ===
+local function WalkToTarget(hrp, humanoid, targetInstance, distanceOffset)
     local targetCF = targetInstance:IsA("Model") and targetInstance:GetPivot() or targetInstance.CFrame
     local targetPos = targetCF.Position
     
-    -- Calcula uma posição segura a 3.5 blocos de distância do objeto, na direção em que o player já está
+    -- Calcula a posição para parar na frente do objeto
     local direction = (hrp.Position - targetPos).Unit
-    local finalPos = targetPos + Vector3.new(direction.X * 3.5, 0, direction.Z * 3.5)
+    local finalPos = targetPos + Vector3.new(direction.X * distanceOffset, 0, direction.Z * distanceOffset)
     finalPos = Vector3.new(finalPos.X, hrp.Position.Y, finalPos.Z)
     
     Log("Indo para o objeto...", Color3.fromRGB(200, 200, 200))
     
-    -- Libera a câmera para andar normal
+    -- Garante que o modo de câmera é o normal do jogo para não bugar interações
     Camera.CameraType = Enum.CameraType.Custom
     humanoid.WalkSpeed = 16
     humanoid:MoveTo(finalPos)
@@ -67,13 +67,16 @@ local function WalkToTarget(hrp, humanoid, targetInstance)
     humanoid:MoveTo(hrp.Position) -- Freio instantâneo
     task.wait(0.1)
     
-    -- 1. Vira o CORPO do boneco EXATAMENTE de frente pro objeto
+    -- 1. Vira o CORPO do boneco de frente para o objeto
     hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
     
-    -- 2. Trava a CÂMERA nas costas, olhando FIXAMENTE para o centro do objeto
-    Camera.CameraType = Enum.CameraType.Scriptable
-    local finalCamPos = hrp.Position - (hrp.CFrame.LookVector * 5) + Vector3.new(0, 3, 0)
-    Camera.CFrame = CFrame.lookAt(finalCamPos, targetPos)
+    -- 2. CÂMERA DRONE: Ajusta a câmera para trás (7) e para cima (6)
+    -- E aponta para o MEIO do objeto (+3 no eixo Y) para não olhar para o chão
+    local finalCamPos = hrp.Position - (hrp.CFrame.LookVector * 7) + Vector3.new(0, 6, 0)
+    Camera.CFrame = CFrame.lookAt(finalCamPos, targetPos + Vector3.new(0, 3, 0))
+    
+    -- Devolve o foco oficial para o personagem (Resolve o bug de não aparecer interação)
+    Camera.CameraSubject = humanoid
 end
 
 local function PressE()
@@ -111,7 +114,7 @@ local function RunFarmCycle(hrp, hum, myId)
     end
     
     if closestFridge then
-        WalkToTarget(hrp, hum, closestFridge)
+        WalkToTarget(hrp, hum, closestFridge, 3.5)
         task.wait(0.8); PressE()
         
         local interactUI = PlayerGui:WaitForChild("_interactUI", 5)
@@ -191,7 +194,7 @@ local function RunFarmCycle(hrp, hum, myId)
             local act = actionLbl.Text:lower()
             
             if table.find(finishedActions, act) then
-                Log("Apareceu '".. actionLbl.Text .."'! Prato Finalizado!", Color3.fromRGB(50, 255, 50))
+                Log("Prato Finalizado Automaticamente!", Color3.fromRGB(50, 255, 50))
                 finished = true
                 break
             end
@@ -214,7 +217,7 @@ local function RunFarmCycle(hrp, hum, myId)
         end
         
         if station then
-            WalkToTarget(hrp, hum, station)
+            WalkToTarget(hrp, hum, station, 3.5)
             task.wait(0.5); PressE(); task.wait(1)
             
             local msgBox = PlayerGui:FindFirstChild("MessageBox", true)
@@ -275,7 +278,7 @@ local function RunFarmCycle(hrp, hum, myId)
                         local currentAction = currentActionLbl.Text:lower()
                         
                         if table.find(finishedActions, currentAction) then
-                            Log("Pronto para '".. currentActionLbl.Text .."'!", Color3.fromRGB(50, 255, 50))
+                            Log("Pronto! Reiniciando...", Color3.fromRGB(50, 255, 50))
                             finished = true
                             break
                         end
@@ -330,7 +333,7 @@ function _G.BloxburgChef.Start(foodName)
     local hum = char and char:FindFirstChild("Humanoid")
     if hum then hum.WalkSpeed = 16 end 
     
-    Log("GPS Culinário e Câmera Fixa Ativos", Color3.fromRGB(100, 200, 255))
+    Log("GPS Culinário Ativo (Câmera Custom Alta)", Color3.fromRGB(100, 200, 255))
     Log("=== FARM INICIADO: " .. selectedFood .. " ===", Color3.fromRGB(50, 255, 50))
     
     task.spawn(function()
