@@ -27,7 +27,11 @@ local finishedActions = {
 }
 
 local function Log(texto, cor)
-    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog(texto, cor) else print("[Chef] " .. texto) end
+    if _G.BloxburgChef_AddLog then 
+        _G.BloxburgChef_AddLog(texto, cor) 
+    else 
+        print("[Chef] " .. texto) 
+    end
 end
 
 -- === LEITURA DE AÇÃO PELO CAMINHO ABSOLUTO ===
@@ -154,7 +158,7 @@ local function MoveToStation(name)
     return true
 end
 
--- === PROCESSADOR DE BOTÕES DO MINIGAME (Com getnilinstances) ===
+-- === PROCESSADOR DE BOTÕES DO MINIGAME ===
 local function ProcessMinigameButtons()
     local acted = false
 
@@ -173,7 +177,7 @@ local function ProcessMinigameButtons()
             VirtualInputManager:SendKeyEvent(false, Enum.KeyCode[letra], false, game)
             acted = true
         else
-            SafeClick(b) -- Substituído pelo Clique Silencioso
+            SafeClick(b) -- Usando o Clique Silencioso para os botões sem letra
             acted = true
         end
     end
@@ -227,7 +231,7 @@ local function MonitorAndCook(expectedAction)
             -- Se for uma ação válida e for a que estamos à espera, clica!
             for _, vAct in pairs(validActions) do
                 if string.find(currentAct, string.lower(vAct)) then
-                    SafeClick(currentBtn) -- Substituído pelo Clique Silencioso
+                    SafeClick(currentBtn) -- Clique Silencioso no botão azul
                     acted = true
                     break
                 end
@@ -312,51 +316,49 @@ function _G.BloxburgChef.Start(food)
                                 end
                             end
                         end
-                        -- Espera um pouco para ver se abriu
                         task.wait(0.5)
                         listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)", true)
                     end
 
-                    -- 3. Seleciona a comida usando o Evento Interno (Baseado no Dex)
+                    -- 3. Seleciona a comida usando EXCLUSIVAMENTE o Evento Interno
                     if listMenu then
-                        task.wait(0.4) -- Tempo para a UI carregar internamente
+                        Log("Menu aberto. Aguardando itens carregarem...", Color3.fromRGB(200, 200, 200))
+                        task.wait(1.5) -- Freio principal: dá tempo para o jogo popular a lista de ingredientes
                         
-                        -- Busca o evento exato da imagem
                         local mainFrame = listMenu:FindFirstChild("Frame")
                         local uiEvent = mainFrame and mainFrame:FindFirstChild("Event")
                         
                         local foodBtn = listMenu:FindFirstChild(selectedFood .. "_Button", true)
                         
-                        -- Fallback de busca de botão pelo texto
+                        -- Fallback de busca de botão pelo texto (caso o nome do botão não seja exato)
                         if not foodBtn then
                             for _, v in pairs(listMenu:GetDescendants()) do
                                 if v:IsA("TextLabel") and string.find(string.lower(v.Text), string.lower(selectedFood)) then
-                                    foodBtn = v.Parent
-                                    break
+                                    -- O Bloxburg costuma ter o TextLabel dentro do botão
+                                    if v.Parent:IsA("GuiButton") or v.Parent:IsA("ImageButton") then
+                                        foodBtn = v.Parent
+                                        break
+                                    elseif v.Parent.Parent:IsA("GuiButton") then
+                                        foodBtn = v.Parent.Parent
+                                        break
+                                    end
                                 end
                             end
                         end
 
-                        Log("Injetando seleção do ingrediente: " .. selectedFood, Color3.fromRGB(200, 200, 255))
-
-                        -- Método Primário: Disparar o evento interno (O mais seguro!)
                         if uiEvent then
-                            -- O Bloxburg costuma aceitar ou a string do nome ou a instância do botão no evento
-                            pcall(function() uiEvent:Fire(selectedFood) end)
                             if foodBtn then
+                                Log("Disparando Evento na geladeira: " .. selectedFood, Color3.fromRGB(200, 200, 255))
+                                
+                                -- Dispara o evento passando o botão como argumento
                                 pcall(function() uiEvent:Fire(foodBtn) end)
+                                task.wait(0.2)
+                                pcall(function() uiEvent:Fire(selectedFood) end)
+                            else
+                                Log("Botão do alimento não encontrado na lista. A lista carregou?", Color3.fromRGB(255, 100, 100))
                             end
-                        end
-                        
-                        -- Método Secundário: Clique Silencioso direto no botão (Sem mouse)
-                        if foodBtn then
-                            SafeClick(foodBtn)
-                            
-                            for _, child in pairs(foodBtn:GetDescendants()) do
-                                if child:IsA("GuiButton") or child.Name == "Take" or child.Name == "Pegar" then
-                                    SafeClick(child)
-                                end
-                            end
+                        else
+                            Log("ERRO: O Evento (Frame.Event) não foi encontrado pelo Dex!", Color3.fromRGB(255, 50, 50))
                         end
                     end
 
@@ -381,7 +383,7 @@ function _G.BloxburgChef.Start(food)
 
                     if not hasFood then
                         Log("Falha ao pegar comida. Tentando novamente...", Color3.fromRGB(255, 150, 50))
-                        task.wait(0.5) -- Pausa leve antes de tentar abrir a geladeira de novo
+                        task.wait(0.5)
                     end
                 else
                     Log("Geladeira não encontrada no lote!", Color3.fromRGB(255, 50, 50))
@@ -416,12 +418,12 @@ function _G.BloxburgChef.Start(food)
                     if MoveToStation(targetName) then
                         task.wait(0.5)
 
-                        -- Limpa se estiver sujo
+                        -- Limpa se estiver sujo usando Clique Silencioso
                         local interactUI = PlayerGui:FindFirstChild("_interactUI")
                         if interactUI then
                             for _, el in pairs(interactUI:GetDescendants()) do
                                 if el:IsA("TextLabel") and (string.lower(el.Text) == "clean" or string.lower(el.Text) == "limpar") then
-                                    SafeClick(el.Parent) -- Substituído pelo Clique Silencioso
+                                    SafeClick(el.Parent)
                                     task.wait(9)
                                     break
                                 end
@@ -432,7 +434,6 @@ function _G.BloxburgChef.Start(food)
                         cookingStatus = MonitorAndCook(actText)
                     end
                 else
-                     -- Se perder o botão azul de vista, espera um pouco para ver se ele volta
                      task.wait(0.5)
                 end
             end
@@ -443,4 +444,5 @@ end
 function _G.BloxburgChef.Stop()
     isRunning = false
     currentMacroId = currentMacroId + 1
+    Log("Farm Parado.", Color3.fromRGB(255, 100, 100))
 end
