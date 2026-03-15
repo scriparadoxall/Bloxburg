@@ -54,18 +54,31 @@ local function GetCurrentAction()
     return nil, nil
 end
 
--- === CLIQUE FORÇADO ===
-local function ForceClick(element)
-    if not element then return end
+-- === CLIQUE SILENCIOSO (Ignora notificações na tela) ===
+local function SafeClick(element)
+    if not element then return false end
+    local success = false
+    
     pcall(function()
-        if element.MouseButton1Click then for _, conn in pairs(getconnections(element.MouseButton1Click)) do conn:Fire() end end
-        if element.Activated then for _, conn in pairs(getconnections(element.Activated)) do conn:Fire() end end
+        if getconnections then
+            -- Tenta disparar o MouseButton1Click
+            if element.MouseButton1Click then 
+                for _, conn in pairs(getconnections(element.MouseButton1Click)) do 
+                    conn:Fire() 
+                    success = true
+                end 
+            end
+            -- Se não foi, tenta o Activated
+            if not success and element.Activated then 
+                for _, conn in pairs(getconnections(element.Activated)) do 
+                    conn:Fire() 
+                    success = true
+                end 
+            end
+        end
     end)
-    local center = element.AbsolutePosition + (element.AbsoluteSize / 2)
-    local inset = GuiService:GetGuiInset()
-    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + inset.Y, 0, true, game, 1)
-    task.wait(0.05)
-    VirtualInputManager:SendMouseButtonEvent(center.X, center.Y + inset.Y, 0, false, game, 1)
+    
+    return success
 end
 
 -- === FILTRO DE SEGURANÇA: LOTE ===
@@ -134,6 +147,7 @@ local function MoveToStation(name)
     AimAtObject(station)
 
     task.wait(0.2)
+    -- Tecla E mantida no VirtualInputManager, pois é input físico de teclado, não atrapalhado por UI.
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
     task.wait(0.05)
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
@@ -159,10 +173,7 @@ local function ProcessMinigameButtons()
             VirtualInputManager:SendKeyEvent(false, Enum.KeyCode[letra], false, game)
             acted = true
         else
-            pcall(function()
-                if b.MouseButton1Click then for _, conn in pairs(getconnections(b.MouseButton1Click)) do conn:Fire() end end
-                if b.Activated then for _, conn in pairs(getconnections(b.Activated)) do conn:Fire() end end
-            end)
+            SafeClick(b) -- Substituído pelo Clique Silencioso
             acted = true
         end
     end
@@ -216,7 +227,7 @@ local function MonitorAndCook(expectedAction)
             -- Se for uma ação válida e for a que estamos à espera, clica!
             for _, vAct in pairs(validActions) do
                 if string.find(currentAct, string.lower(vAct)) then
-                    ForceClick(currentBtn)
+                    SafeClick(currentBtn) -- Substituído pelo Clique Silencioso
                     acted = true
                     break
                 end
@@ -290,30 +301,33 @@ function _G.BloxburgChef.Start(food)
                         waitTime = waitTime + 1
                     end
 
-                    -- 2. Se o 'E' do MoveToStation falhou, tenta forçar o clique na tela
+                    -- 2. Se o 'E' do MoveToStation falhou, tenta usar o clique silencioso na UI
                     if not listMenu or not listMenu.Visible then
                         local interactUI = PlayerGui:FindFirstChild("_interactUI")
                         if interactUI then
                             for _, el in pairs(interactUI:GetDescendants()) do
                                 if el:IsA("TextLabel") and (string.lower(el.Text):find("take") or string.lower(el.Text):find("pegar") or string.lower(el.Text):find("ingredients")) then
-                                    ForceClick(el.Parent)
+                                    SafeClick(el.Parent)
                                     break
                                 end
                             end
                         end
-                        -- Espera um pouco para ver se o clique forçado abriu
+                        -- Espera um pouco para ver se abriu
                         task.wait(0.5)
                         listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)", true)
                     end
 
-                    -- 3. Clica na comida selecionada
+                    -- 3. Seleciona a comida usando o Evento Interno (Baseado no Dex)
                     if listMenu then
-                        -- Adiciona um pequeno atraso para a animação de "abertura" do menu terminar
-                        task.wait(0.4) 
+                        task.wait(0.4) -- Tempo para a UI carregar internamente
+                        
+                        -- Busca o evento exato da imagem
+                        local mainFrame = listMenu:FindFirstChild("Frame")
+                        local uiEvent = mainFrame and mainFrame:FindFirstChild("Event")
                         
                         local foodBtn = listMenu:FindFirstChild(selectedFood .. "_Button", true)
                         
-                        -- Fallback: Se não achar pelo nome exato do botão, procura lendo os textos
+                        -- Fallback de busca de botão pelo texto
                         if not foodBtn then
                             for _, v in pairs(listMenu:GetDescendants()) do
                                 if v:IsA("TextLabel") and string.find(string.lower(v.Text), string.lower(selectedFood)) then
@@ -323,26 +337,26 @@ function _G.BloxburgChef.Start(food)
                             end
                         end
 
+                        Log("Injetando seleção do ingrediente: " .. selectedFood, Color3.fromRGB(200, 200, 255))
+
+                        -- Método Primário: Disparar o evento interno (O mais seguro!)
+                        if uiEvent then
+                            -- O Bloxburg costuma aceitar ou a string do nome ou a instância do botão no evento
+                            pcall(function() uiEvent:Fire(selectedFood) end)
+                            if foodBtn then
+                                pcall(function() uiEvent:Fire(foodBtn) end)
+                            end
+                        end
+                        
+                        -- Método Secundário: Clique Silencioso direto no botão (Sem mouse)
                         if foodBtn then
-                            Log("Pegando ingrediente: " .. selectedFood, Color3.fromRGB(200, 200, 255))
+                            SafeClick(foodBtn)
                             
-                            -- Clica no botão principal
-                            ForceClick(foodBtn)
-                            
-                            -- Procura e clica em todos os sub-botões internos (comum na UI do Bloxburg)
                             for _, child in pairs(foodBtn:GetDescendants()) do
                                 if child:IsA("GuiButton") or child.Name == "Take" or child.Name == "Pegar" then
-                                    ForceClick(child)
+                                    SafeClick(child)
                                 end
                             end
-
-                            -- Dispara o evento interno como última garantia
-                            local ev = listMenu:FindFirstChild("Frame") and listMenu.Frame:FindFirstChild("Event")
-                            if ev then pcall(function() ev:Fire(foodBtn) end) end
-                            
-                        else
-                            Log("Ingrediente '" .. selectedFood .. "' não encontrado na lista. Nome errado?", Color3.fromRGB(255, 100, 100))
-                            task.wait(2)
                         end
                     end
 
@@ -407,7 +421,7 @@ function _G.BloxburgChef.Start(food)
                         if interactUI then
                             for _, el in pairs(interactUI:GetDescendants()) do
                                 if el:IsA("TextLabel") and (string.lower(el.Text) == "clean" or string.lower(el.Text) == "limpar") then
-                                    ForceClick(el.Parent)
+                                    SafeClick(el.Parent) -- Substituído pelo Clique Silencioso
                                     task.wait(9)
                                     break
                                 end
