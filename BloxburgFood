@@ -115,24 +115,24 @@ end
 local function MoveToStation(name)
     local station = FindMyStation(name)
     if not station then return false end
-    
+
     local hrp = LocalPlayer.Character.HumanoidRootPart
     local hum = LocalPlayer.Character.Humanoid
     local targetPos = station:GetPivot().Position
-    
+
     local dir = (hrp.Position - targetPos).Unit
     local walkPos = targetPos + (dir * 3.2)
     hum:MoveTo(walkPos)
-    
+
     local t = 0
     while (hrp.Position - walkPos).Magnitude > 1.5 and t < 60 do
         if hum.MoveDirection.Magnitude < 0.1 then hum.Jump = true end
         task.wait(0.1); t = t + 1
     end
-    
+
     hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
     AimAtObject(station)
-    
+
     task.wait(0.2)
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
     task.wait(0.05)
@@ -143,7 +143,7 @@ end
 -- === PROCESSADOR DE BOTÕES DO MINIGAME (Com getnilinstances) ===
 local function ProcessMinigameButtons()
     local acted = false
-    
+
     local function HandleButton(b)
         local letra = nil
         for _, c in pairs(b:GetDescendants()) do
@@ -152,7 +152,7 @@ local function ProcessMinigameButtons()
                 break
             end
         end
-        
+
         if letra and letra ~= "E" then
             VirtualInputManager:SendKeyEvent(true, Enum.KeyCode[letra], false, game)
             task.wait(0.05)
@@ -176,7 +176,7 @@ local function ProcessMinigameButtons()
             end
         end
     end
-    
+
     -- 2. Busca no Nil (Exploit)
     if getnilinstances then
         for _, v in next, getnilinstances() do 
@@ -190,22 +190,20 @@ local function ProcessMinigameButtons()
 end
 
 -- === O NÚCLEO DE MONITORAMENTO (O LOOP DOS 20s) ===
--- Esta função fica a olhar para a tela. Se a ação mudar, ela diz para onde ir.
--- Se passar 20s sem nada para clicar, ela retorna "timeout" para o ciclo recomeçar.
 local function MonitorAndCook(expectedAction)
     local lastActionTime = tick()
-    
+
     while isRunning do
         local acted = false
-        
+
         -- 1. Verifica os botões do minigame (Letras/Bolhas)
         if ProcessMinigameButtons() then
             acted = true
         end
-        
+
         -- 2. Verifica o botão Azul Principal
         local currentAct, currentBtn = GetCurrentAction()
-        
+
         if currentAct and currentBtn then
             -- Se a receita terminou (Eat/Place), sai do loop
             for _, fAct in pairs(finishedActions) do
@@ -214,7 +212,7 @@ local function MonitorAndCook(expectedAction)
                     return "finished"
                 end
             end
-            
+
             -- Se for uma ação válida e for a que estamos à espera, clica!
             for _, vAct in pairs(validActions) do
                 if string.find(currentAct, string.lower(vAct)) then
@@ -223,24 +221,24 @@ local function MonitorAndCook(expectedAction)
                     break
                 end
             end
-            
+
             -- Se a palavra no botão azul MUDOU, significa que precisamos mudar de móvel
             if currentAct ~= expectedAction then
                 return "changed_station"
             end
         end
-        
+
         -- 3. Controle do Tempo (Ociosidade)
         if acted then
             lastActionTime = tick() -- Zera o cronômetro
             task.wait(0.2)
         end
-        
+
         if tick() - lastActionTime >= 20 then
             Log("Nenhuma ação há 20 segundos! Resetando...", Color3.fromRGB(255, 100, 100))
             return "timeout"
         end
-        
+
         task.wait(0.1)
     end
     return "stopped"
@@ -253,18 +251,19 @@ function _G.BloxburgChef.Start(food)
     isRunning = true
     currentMacroId = currentMacroId + 1
     local myId = currentMacroId
-    
+
     Log("Farm Iniciado (Monitoramento Universal 20s)", Color3.fromRGB(50, 255, 50))
-    
+
     task.spawn(function()
         while isRunning and currentMacroId == myId do
-            
+
             -- ==========================================
             -- 1. FASE DA GELADEIRA (PEGAR COMIDA)
             -- ==========================================
             local hasFood = false
-            
+
             while isRunning and currentMacroId == myId and not hasFood do
+                -- Verifica se já tem a comida na mão
                 local startActText, _ = GetCurrentAction()
                 if startActText then
                     for _, vAct in pairs(validActions) do
@@ -275,36 +274,63 @@ function _G.BloxburgChef.Start(food)
                         end
                     end
                 end
-                
+
                 if hasFood then break end
 
                 if MoveToStation("Icebox Fridge") then
-                    task.wait(1)
-                    local interactUI = PlayerGui:FindFirstChild("_interactUI")
-                    if interactUI then
-                        for _, el in pairs(interactUI:GetDescendants()) do
-                            if el:IsA("TextLabel") and (string.lower(el.Text):find("take") or string.lower(el.Text):find("pegar")) then
-                                ForceClick(el.Parent)
-                                break
+                    Log("Chegou na geladeira. Aguardando UI...", Color3.fromRGB(200, 200, 200))
+                    
+                    -- 1. Espera Dinâmica pelo menu abrir (Máximo de 3 segundos)
+                    local listMenu = nil
+                    local waitTime = 0
+                    while waitTime < 30 do -- 30 * 0.1s = 3 segundos
+                        listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)", true)
+                        if listMenu and listMenu.Visible then break end
+                        task.wait(0.1)
+                        waitTime = waitTime + 1
+                    end
+
+                    -- 2. Se o 'E' do MoveToStation falhou, tenta forçar o clique na tela
+                    if not listMenu or not listMenu.Visible then
+                        local interactUI = PlayerGui:FindFirstChild("_interactUI")
+                        if interactUI then
+                            for _, el in pairs(interactUI:GetDescendants()) do
+                                if el:IsA("TextLabel") and (string.lower(el.Text):find("take") or string.lower(el.Text):find("pegar") or string.lower(el.Text):find("ingredients")) then
+                                    ForceClick(el.Parent)
+                                    break
+                                end
                             end
                         end
+                        -- Espera um pouco para ver se o clique forçado abriu
+                        task.wait(0.5)
+                        listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)", true)
                     end
-                    task.wait(1.5)
-                    local listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)", true)
+
+                    -- 3. Clica na comida selecionada
                     if listMenu then
                         local foodBtn = listMenu:FindFirstChild(selectedFood .. "_Button", true)
                         if foodBtn then
-                            ForceClick(foodBtn:FindFirstChild("Take"))
+                            Log("Pegando ingrediente: " .. selectedFood, Color3.fromRGB(200, 200, 255))
+                            
+                            -- Método 1: Clique forçado na UI
+                            local takeBtn = foodBtn:FindFirstChild("Take")
+                            if takeBtn then ForceClick(takeBtn) end
+                            ForceClick(foodBtn)
+
+                            -- Método 2: Bypass de evento interno do Bloxburg (Garante que vai pegar)
                             local ev = listMenu:FindFirstChild("Frame") and listMenu.Frame:FindFirstChild("Event")
                             if ev then pcall(function() ev:Fire(foodBtn) end) end
+                        else
+                            Log("Ingrediente '" .. selectedFood .. "' não achado. Level baixo?", Color3.fromRGB(255, 100, 100))
+                            task.wait(2) -- Previne spam de erro
                         end
                     end
-                    
-                    -- Scanner da Geladeira (agora integrado com timeout)
+
+                    -- 4. Scanner de Confirmação Rápido (Máximo de 4 segundos)
                     local fridgeStartTime = tick()
-                    while tick() - fridgeStartTime < 20 do
+                    while tick() - fridgeStartTime < 4 do
                         if not isRunning or currentMacroId ~= myId then break end
-                        
+
                         local actText, _ = GetCurrentAction()
                         if actText then
                             for _, vAct in pairs(validActions) do
@@ -316,26 +342,27 @@ function _G.BloxburgChef.Start(food)
                             end
                         end
                         if hasFood then break end
-                        task.wait(0.2)
+                        task.wait(0.1)
                     end
-                    
+
                     if not hasFood then
-                        Log("Mão vazia após 20s na geladeira. Tentando de novo...", Color3.fromRGB(255, 100, 100))
+                        Log("Falha ao pegar comida. Tentando novamente...", Color3.fromRGB(255, 150, 50))
+                        task.wait(0.5) -- Pausa leve antes de tentar abrir a geladeira de novo
                     end
                 else
-                    Log("Geladeira não encontrada!", Color3.fromRGB(255, 50, 50))
+                    Log("Geladeira não encontrada no lote!", Color3.fromRGB(255, 50, 50))
                     task.wait(3)
                 end
             end
-            
+
             -- ==========================================
             -- 2. FASE DE COZINHAR (MOVIMENTO + MONITORAMENTO)
             -- ==========================================
             local cookingStatus = "cooking"
-            
+
             while isRunning and currentMacroId == myId and cookingStatus ~= "finished" and cookingStatus ~= "timeout" do
                 local actText, equippedBtn = GetCurrentAction()
-                
+
                 if actText and equippedBtn then
                     -- Verifica se já terminou
                     for _, fAct in pairs(finishedActions) do
@@ -346,15 +373,15 @@ function _G.BloxburgChef.Start(food)
                         end
                     end
                     if cookingStatus == "finished" then break end
-                    
+
                     local isStove = string.find(actText, "fry") or string.find(actText, "boil") or string.find(actText, "cook") or string.find(actText, "bake") or string.find(actText, "fritar") or string.find(actText, "ferver") or string.find(actText, "cozinhar") or string.find(actText, "assar")
                     local targetName = isStove and "Basic Stove" or "Basic Counter"
-                    
+
                     Log("Indo para " .. targetName .. " (" .. actText .. ")", Color3.fromRGB(150, 200, 255))
-                    
+
                     if MoveToStation(targetName) then
                         task.wait(0.5)
-                        
+
                         -- Limpa se estiver sujo
                         local interactUI = PlayerGui:FindFirstChild("_interactUI")
                         if interactUI then
@@ -366,7 +393,7 @@ function _G.BloxburgChef.Start(food)
                                 end
                             end
                         end
-                        
+
                         -- Entra no Loop de Monitoramento
                         cookingStatus = MonitorAndCook(actText)
                     end
