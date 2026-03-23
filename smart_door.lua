@@ -1,10 +1,9 @@
-local PathfindingService = game:GetService("PathfindingService") -- Corrigido o "local" minúsculo
+local PathfindingService = game:GetService("PathfindingService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local Players = game:GetService("Players")
 
--- Usando getgenv() para compartilhar com qualquer outro script!
-getgenv().SmartDoor = {} 
-
+-- Cria a tabela localmente primeiro (evita qualquer erro de sintaxe)
+local SmartDoor = {} 
 local lastDoorClick = 0
 
 local function GetDoors(scope)
@@ -36,8 +35,8 @@ local function OpenNearbyDoors(hrp, doors)
     end
 end
 
--- CORRIGIDO A SINTAXE DA FUNÇÃO AQUI:
-getgenv().SmartDoor.IrPara = function(destino, escopo_portas)
+-- Declara a função normalmente dentro da tabela local
+function SmartDoor.IrPara(destino, escopo_portas)
     local player = Players.LocalPlayer
     local char = player.Character
     if not char or not char:FindFirstChild("Humanoid") or not char:FindFirstChild("HumanoidRootPart") then 
@@ -106,3 +105,6 @@ getgenv().SmartDoor.IrPara = function(destino, escopo_portas)
         return true 
     end
 end
+
+-- AQUI ESTÁ O SEGREDO: Manda a tabela inteira e pronta para o getgenv() de uma vez só!
+getgenv().SmartDoor = SmartDoor
