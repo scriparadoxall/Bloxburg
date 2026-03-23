@@ -1,4 +1,4 @@
-local PathfindingService = game:GetService("PathfindingService")
+local PathfindingService = game:GetService("PathfindingService") -- Corrigido o "local" minúsculo
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local Players = game:GetService("Players")
 
@@ -36,7 +36,8 @@ local function OpenNearbyDoors(hrp, doors)
     end
 end
 
-function getgenv().SmartDoor.IrPara(destino, escopo_portas)
+-- CORRIGIDO A SINTAXE DA FUNÇÃO AQUI:
+getgenv().SmartDoor.IrPara = function(destino, escopo_portas)
     local player = Players.LocalPlayer
     local char = player.Character
     if not char or not char:FindFirstChild("Humanoid") or not char:FindFirstChild("HumanoidRootPart") then 
@@ -45,7 +46,7 @@ function getgenv().SmartDoor.IrPara(destino, escopo_portas)
 
     local hrp = char.HumanoidRootPart
     local hum = char.Humanoid
-    
+
     local targetPos
     if typeof(destino) == "Vector3" then targetPos = destino
     elseif typeof(destino) == "Instance" and destino:IsA("Model") then targetPos = destino:GetPivot().Position
