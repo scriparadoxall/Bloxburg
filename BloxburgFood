@@ -2,7 +2,8 @@ local Players = game:GetService("Players")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local TweenService = game:GetService("TweenService")
 local GuiService = game:GetService("GuiService")
-local PathfindingService = game:GetService("PathfindingService") -- Adicionado para o SmartNavigate
+
+-- VEJA QUE O PATHFINDING SERVICE SUMIU DAQUI! O script principal não calcula mais nada de rotas.
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -35,7 +36,7 @@ local function Log(texto, cor)
     end
 end
 
--- === LEITURA DE AÇÃO PELO CAMINHO ABSOLUTO ===
+-- === LEITURA DE AÇÃO ===
 local function GetCurrentAction()
     local hudGui = PlayerGui:FindFirstChild("HUDGui")
     if hudGui then
@@ -59,11 +60,9 @@ local function GetCurrentAction()
     return nil, nil
 end
 
--- === CLIQUE SILENCIOSO (Ignora notificações na tela) ===
 local function SafeClick(element)
     if not element then return false end
     local success = false
-
     pcall(function()
         if getconnections then
             if element.MouseButton1Click then 
@@ -77,7 +76,6 @@ local function SafeClick(element)
     return success
 end
 
--- === FILTRO DE SEGURANÇA: LOTE ===
 local function GetMyOwnPlot()
     local plots = workspace:FindFirstChild("Plots")
     if not plots then return nil end
@@ -111,7 +109,6 @@ local function FindMyStation(stationName)
     return target
 end
 
--- === AJUSTE DE CÂMERA HUMANA ===
 local function AimAtObject(obj)
     local targetPos = obj:GetPivot().Position
     local lookTarget = targetPos + Vector3.new(0, -0.5, 0) 
@@ -120,105 +117,34 @@ local function AimAtObject(obj)
     task.wait(0.5)
 end
 
--- === SISTEMA SMART DOOR (Detecção e Abertura) ===
-local function HandleNearbyDoors(hrp)
-    for _, obj in pairs(workspace:GetDescendants()) do
-        if obj:IsA("Model") and (string.find(string.lower(obj.Name), "door") or string.find(string.lower(obj.Name), "porta")) then
-            local pivot = obj:GetPivot().Position
-            local distance = (hrp.Position - pivot).Magnitude
-            
-            -- Se estiver a menos de 6 studs, tenta abrir com 'E'
-            if distance < 6 then
-                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                task.wait(0.1)
-                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-                task.wait(0.3) -- Pequena pausa para a animação da porta não travar o boneco
-            end
-        end
-    end
-end
-
--- === MOVIMENTAÇÃO INTELIGENTE (Pathfinding + Smart Door) ===
+-- === DELEGAÇÃO PURA PARA O MÓDULO SMART DOOR ===
 local function MoveToStation(name)
     local station = FindMyStation(name)
     if not station then return false end
 
-    local hrp = LocalPlayer.Character.HumanoidRootPart
-    local hum = LocalPlayer.Character.Humanoid
-    local targetPos = station:GetPivot().Position
-
-    -- Calcula a posição final (um pouco afastado para não entrar no móvel)
-    local dir = (hrp.Position - targetPos).Unit
-    local walkPos = targetPos + (dir * 3.2)
-
-    -- Truque: Desativa colisão das portas para o Pathfinding traçar a rota reta
-    local allDoors = {}
-    for _, obj in pairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and obj.Parent and (string.find(string.lower(obj.Parent.Name), "door") or string.find(string.lower(obj.Parent.Name), "porta")) then
-            table.insert(allDoors, {Part = obj, OriginalCollide = obj.CanCollide})
-            obj.CanCollide = false
-        end
-    end
-
-    -- Cria o caminho
-    local path = PathfindingService:CreatePath({
-        AgentRadius = 2,
-        AgentHeight = 5,
-        AgentCanJump = true,
-        AgentMaxSlope = 45,
-    })
+    local myPlot = GetMyOwnPlot()
     
-    local success, _ = pcall(function()
-        path:ComputeAsync(hrp.Position, walkPos)
-    end)
+    -- O SCRIPT PRINCIPAL SÓ CHAMA A FUNÇÃO. NÃO CALCULA NADA.
+    local chegou_no_destino = _G.SmartDoor.IrPara(station, myPlot)
 
-    -- Devolve a colisão original das portas imediatamente
-    for _, data in pairs(allDoors) do
-        if data.Part then data.Part.CanCollide = data.OriginalCollide end
-    end
-
-    if success and path.Status == Enum.PathStatus.Success then
-        local waypoints = path:GetWaypoints()
+    -- Se o módulo avisou que chegou, a gente vira pro móvel e interage
+    if chegou_no_destino then
+        local hrp = LocalPlayer.Character.HumanoidRootPart
+        local targetPos = station:GetPivot().Position
         
-        for i, waypoint in ipairs(waypoints) do
-            if not isRunning then return false end -- Para se o farm for desligado
-            
-            if waypoint.Action == Enum.PathWaypointAction.Jump then
-                hum.Jump = true
-            end
-            
-            hum:MoveTo(waypoint.Position)
-            
-            local t = 0
-            -- Enquanto anda pro waypoint, checa portas e sistema anti-stuck
-            while (hrp.Position - waypoint.Position).Magnitude > 2 and t < 30 do
-                HandleNearbyDoors(hrp)
-                if hum.MoveDirection.Magnitude < 0.1 then hum.Jump = true end
-                task.wait(0.1)
-                t = t + 1
-            end
-        end
-    else
-        -- Fallback: Se o Pathfinding falhar por algum motivo, tenta ir em linha reta (código antigo)
-        Log("Aviso: Rota complexa falhou, indo em linha reta...", Color3.fromRGB(255, 150, 50))
-        hum:MoveTo(walkPos)
-        local t = 0
-        while (hrp.Position - walkPos).Magnitude > 1.5 and t < 60 do
-            HandleNearbyDoors(hrp) -- Ainda tenta abrir portas no caminho reto
-            if hum.MoveDirection.Magnitude < 0.1 then hum.Jump = true end
-            task.wait(0.1); t = t + 1
-        end
+        -- Vira o boneco e a câmera para o móvel
+        hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
+        AimAtObject(station)
+
+        -- Aperta E no balcão/geladeira
+        task.wait(0.2)
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+        task.wait(0.05)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+        return true
     end
 
-    -- Ajusta o boneco olhando pro móvel
-    hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
-    AimAtObject(station)
-
-    task.wait(0.2)
-    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-    task.wait(0.05)
-    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-    return true
+    return false
 end
 
 -- === PROCESSADOR DE BOTÕES DO MINIGAME ===
@@ -310,7 +236,7 @@ function _G.BloxburgChef.Start(food)
     currentMacroId = currentMacroId + 1
     local myId = currentMacroId
 
-    Log("Farm Iniciado (Smart Navigate Ativo)", Color3.fromRGB(50, 255, 50))
+    Log("Farm Iniciado (Usando Módulo SmartDoor!)", Color3.fromRGB(50, 255, 50))
 
     task.spawn(function()
         while isRunning and currentMacroId == myId do
@@ -395,7 +321,7 @@ function _G.BloxburgChef.Start(food)
                         task.wait(0.1)
                     end
                 else
-                    Log("Geladeira não encontrada!", Color3.fromRGB(255, 50, 50))
+                    Log("Geladeira não encontrada ou caminho bloqueado!", Color3.fromRGB(255, 50, 50))
                     task.wait(3)
                 end
             end
