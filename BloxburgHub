@@ -2,7 +2,18 @@ local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 
--- === 1. CARREGAR O CÉREBRO (BACK-END) DO GITHUB ===
+-- === 1. CARREGAR O MÓDULO SMART DOOR PRIMEIRO (Vem do seu GitHub) ===
+local smartDoorURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/smart_door.lua?t=" .. tostring(tick())
+local loadDoor, errDoor = loadstring(game:HttpGet(smartDoorURL))
+
+if loadDoor then
+    loadDoor()
+else
+    warn("ERRO CRÍTICO AO CARREGAR O SMART DOOR: " .. tostring(errDoor))
+    return
+end
+
+-- === 2. CARREGAR O CÉREBRO (BACK-END DA COMIDA) DO GITHUB ===
 local backendURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/BloxburgFood?t=" .. tostring(tick())
 local code = game:HttpGet(backendURL)
 local loadFunc, loadErr = loadstring(code)
