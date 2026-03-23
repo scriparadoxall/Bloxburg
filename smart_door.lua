@@ -2,18 +2,47 @@ local PathfindingService = game:GetService("PathfindingService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local Players = game:GetService("Players")
 
--- Cria a tabela localmente primeiro (evita qualquer erro de sintaxe)
 local SmartDoor = {} 
 local lastDoorClick = 0
 
+-- BUSCA OTIMIZADA COM O CAMINHO QUE VOCÊ MANDOU
 local function GetDoors(scope)
     local doors = {}
     local searchArea = scope or workspace
-    for _, obj in pairs(searchArea:GetDescendants()) do
-        if obj:IsA("Model") and (string.match(string.lower(obj.Name), "door") or string.match(string.lower(obj.Name), "porta")) then
-            table.insert(doors, obj)
+    
+    -- Se achar a "House" (Casa do Bloxburg), usamos a busca ultra-rápida
+    if searchArea:FindFirstChild("House") then
+        local house = searchArea.House
+        
+        -- 1. Procura portas embutidas nas paredes (O seu caminho!)
+        if house:FindFirstChild("Walls") then
+            for _, wall in pairs(house.Walls:GetChildren()) do
+                if wall:FindFirstChild("ItemHolder") then
+                    for _, item in pairs(wall.ItemHolder:GetChildren()) do
+                        local name = string.lower(item.Name)
+                        if string.match(name, "door") or string.match(name, "porta") then
+                            table.insert(doors, item)
+                        end
+                    end
+                end
+            end
+        end
+        
+        -- 2. Procura portas normais/soltas (caso tenha)
+        if house:FindFirstChild("Doors") then
+            for _, door in pairs(house.Doors:GetChildren()) do
+                table.insert(doors, door)
+            end
+        end
+    else
+        -- Fallback: Se rodar em outro jogo que não seja Bloxburg, usa a busca normal
+        for _, obj in pairs(searchArea:GetDescendants()) do
+            if obj:IsA("Model") and (string.match(string.lower(obj.Name), "door") or string.match(string.lower(obj.Name), "porta")) then
+                table.insert(doors, obj)
+            end
         end
     end
+    
     return doors
 end
 
@@ -21,6 +50,7 @@ local function OpenNearbyDoors(hrp, doors)
     if tick() - lastDoorClick < 2.5 then return end
     for _, door in pairs(doors) do
         if door and door.Parent then
+            -- O :GetPivot() pega o centro exato da "Panel Door"
             local dist = (hrp.Position - door:GetPivot().Position).Magnitude
             if dist < 6 then
                 lastDoorClick = tick()
@@ -35,7 +65,6 @@ local function OpenNearbyDoors(hrp, doors)
     end
 end
 
--- Declara a função normalmente dentro da tabela local
 function SmartDoor.IrPara(destino, escopo_portas)
     local player = Players.LocalPlayer
     local char = player.Character
@@ -60,6 +89,7 @@ function SmartDoor.IrPara(destino, escopo_portas)
     local doorParts = {}
 
     for _, door in pairs(doors) do
+        -- Agora ele desativa a colisão de tudo dentro de ObjectModel.Door1 etc
         for _, part in pairs(door:GetDescendants()) do
             if part:IsA("BasePart") then
                 table.insert(doorParts, {part = part, coll = part.CanCollide})
@@ -106,5 +136,5 @@ function SmartDoor.IrPara(destino, escopo_portas)
     end
 end
 
--- AQUI ESTÁ O SEGREDO: Manda a tabela inteira e pronta para o getgenv() de uma vez só!
+-- Exporta pra memória
 getgenv().SmartDoor = SmartDoor
