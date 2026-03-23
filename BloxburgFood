@@ -123,15 +123,21 @@ local function MoveToStation(name)
     if not station then return false end
 
     local myPlot = GetMyOwnPlot()
-    
-    -- O SCRIPT PRINCIPAL SÓ CHAMA A FUNÇÃO. NÃO CALCULA NADA.
-    local chegou_no_destino = _G.SmartDoor.IrPara(station, myPlot)
+
+    -- Verifica se você rodou o smart_door.lua primeiro
+    if type(getgenv().SmartDoor) ~= "table" or type(getgenv().SmartDoor.IrPara) ~= "function" then
+        Log("ERRO: Módulo SmartDoor não encontrado! Execute o smart_door.lua primeiro.", Color3.fromRGB(255, 50, 50))
+        return false
+    end
+
+    -- O SCRIPT PRINCIPAL SÓ CHAMA A FUNÇÃO GLOBAL. NÃO CALCULA NADA.
+    local chegou_no_destino = getgenv().SmartDoor.IrPara(station, myPlot)
 
     -- Se o módulo avisou que chegou, a gente vira pro móvel e interage
     if chegou_no_destino then
         local hrp = LocalPlayer.Character.HumanoidRootPart
         local targetPos = station:GetPivot().Position
-        
+
         -- Vira o boneco e a câmera para o móvel
         hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
         AimAtObject(station)
