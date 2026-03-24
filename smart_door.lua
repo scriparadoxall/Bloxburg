@@ -26,7 +26,7 @@ function SmartDoor.Cancelar()
     end)
 end
 
--- A GRANDE CORREÇÃO: Agora ele lê as portas no lugar certo (workspace.Plots)
+-- Acha TODAS as portas da casa lendo o Plot
 local function GetDoors()
     local doors = {}
     local plots = workspace:FindFirstChild("Plots")
@@ -42,7 +42,6 @@ local function GetDoors()
                     if itemHolder then
                         for _, item in pairs(itemHolder:GetChildren()) do
                             local name = string.lower(item.Name)
-                            -- Acha qualquer coisa com "Door" ou "Porta" ("Panel Door", "Plain Door", etc)
                             if string.find(name, "door") or string.find(name, "porta") then
                                 table.insert(doors, item)
                             end
@@ -55,14 +54,13 @@ local function GetDoors()
     return doors
 end
 
--- Como você pediu: Procura a porta mais perto e interage com ela
+-- Tenta interagir com a porta e avisa se conseguiu (para o boneco pausar)
 local function HandleDoorInteraction(hrp, doors)
-    if tick() - lastDoorClick < 1 then return end 
+    if tick() - lastDoorClick < 1.5 then return false end 
     
     local portaMaisPerto = nil
-    local menorDistancia = 7 -- Raio de 7 studs
+    local menorDistancia = 7 
 
-    -- Acha a porta física mais perto de você
     for _, door in pairs(doors) do
         if door and door.Parent then
             local dist = (hrp.Position - door:GetPivot().Position).Magnitude
@@ -73,10 +71,9 @@ local function HandleDoorInteraction(hrp, doors)
         end
     end
 
-    -- Se tiver uma porta perto, ele verifica a UI pra abrir
     if portaMaisPerto then
         local PlayerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
-        if not PlayerGui then return end
+        if not PlayerGui then return false end
 
         local interactUI = PlayerGui:FindFirstChild("_interactUI")
         if interactUI then
@@ -88,19 +85,21 @@ local function HandleDoorInteraction(hrp, doors)
                 local txt = string.lower(textLabel.Text)
                 
                 if string.find(txt, "open") or string.find(txt, "abrir") then
-                    LogSD("🚪 Porta próxima detectada! Abrindo...")
+                    LogSD("🚪 Porta detectada! Pressionando E...")
                     lastDoorClick = tick()
                     task.spawn(function()
                         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
                         task.wait(0.1)
                         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
                     end)
+                    return true -- Retorna TRUE para o bot saber que precisa esperar ela abrir
                 elseif string.find(txt, "close") or string.find(txt, "fechar") then
-                    return
+                    return false
                 end
             end
         end
     end
+    return false
 end
 
 function SmartDoor.IrPara(destino)
@@ -134,9 +133,8 @@ function SmartDoor.IrPara(destino)
         return false 
     end
 
-    LogSD("📍 Calculando rota...")
+    LogSD("📍 Preparando mapa para calcular rota...")
 
-    -- Pega todas as portas mapeadas e desliga a colisão pra traçar a rota (incluindo o ObjectModel.Door1)
     local doors = GetDoors()
     local doorParts = {}
 
@@ -149,9 +147,11 @@ function SmartDoor.IrPara(destino)
         end
     end
 
-    -- Como as portas estão desligadas, podemos voltar o AgentRadius para 1.2 pro boneco andar natural
+    -- O GRANDE SEGREDO: Dá um tempinho pro Roblox atualizar o mapa 3D sem as portas!
+    task.wait(0.15)
+
     local path = PathfindingService:CreatePath({
-        AgentRadius = 1.2, 
+        AgentRadius = 1.0, 
         AgentHeight = 4, 
         AgentCanJump = true, 
         AgentMaxSlope = 45,
@@ -160,13 +160,13 @@ function SmartDoor.IrPara(destino)
 
     local success, err = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
 
-    -- Liga as colisões de volta rapidinho pra casa não ficar quebrada
+    -- Liga as colisões de volta
     for _, data in pairs(doorParts) do if data.part then data.part.CanCollide = data.coll end end
     for _, data in pairs(targetParts) do if data.part then data.part.CanCollide = data.coll end end
 
     if success and path.Status == Enum.PathStatus.Success then
         local waypoints = path:GetWaypoints()
-        LogSD("✅ Rota criada com " .. #waypoints .. " passos.")
+        LogSD("✅ Rota traçada por dentro da casa (" .. #waypoints .. " passos).")
 
         for i, wp in ipairs(waypoints) do
             if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
@@ -185,24 +185,30 @@ function SmartDoor.IrPara(destino)
                 if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
                 
                 hum:MoveTo(wp.Position) 
-                HandleDoorInteraction(hrp, doors) -- Passa as portas pra ele achar a mais perto!
+                
+                -- Se ele acabou de apertar E na porta, ele faz uma pausa pra ela abrir!
+                local abriuPorta = HandleDoorInteraction(hrp, doors)
+                if abriuPorta then
+                    LogSD("⏳ Esperando a porta abrir...")
+                    hum.Jump = true -- Dá um pulinho pra evitar bater
+                    task.wait(0.6)
+                end
 
                 if tick() - tempoChecagemStuck > 0.6 then
                     if (hrp.Position - lastPos).Magnitude < 1 then
-                        LogSD("⚠️ Preso! Pulando para tentar sair...")
+                        LogSD("⚠️ Preso! Forçando pulo...")
                         hum.Jump = true 
                     end
                     lastPos = hrp.Position
                     tempoChecagemStuck = tick()
                 end
 
-                if tick() - tempoInicio > 3 then 
-                    LogSD("⏳ Ponto demorou muito, ignorando...")
+                if tick() - tempoInicio > 3.5 then 
                     break 
                 end
 
                 if i >= #waypoints - 1 and (hrp.Position - targetPos).Magnitude < 4.5 then
-                    LogSD("🎯 Destino alcançado!")
+                    LogSD("🎯 Destino alcançado com sucesso!")
                     return true
                 end
 
@@ -211,10 +217,9 @@ function SmartDoor.IrPara(destino)
         end
         
         local chegou = (hrp.Position - targetPos).Magnitude < 5
-        if not chegou then LogSD("❌ Rota acabou mas não chegou perto.") end
         return chegou
     else
-        LogSD("🚨 Pathfinding falhou! Tentando ir em linha reta...")
+        LogSD("🚨 Pathfinding falhou! (Rota reta ativada)")
         
         local flatTarget = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)
         local dir = (hrp.Position - flatTarget).Unit
@@ -228,27 +233,24 @@ function SmartDoor.IrPara(destino)
             if SmartDoor.CurrentWalkId ~= myWalkId then return false end
             
             hum:MoveTo(walkPos)
-            HandleDoorInteraction(hrp, doors) 
+            
+            if HandleDoorInteraction(hrp, doors) then
+                task.wait(0.6)
+            end
             
             if tick() - tempoChecagemStuck > 0.6 then
                 if (hrp.Position - lastPos).Magnitude < 1 then 
-                    LogSD("⚠️ Travado na linha reta! Pulando...")
                     hum.Jump = true 
                 end
                 lastPos = hrp.Position
                 tempoChecagemStuck = tick()
             end
 
-            if tick() - tempoInicio > 5 then 
-                LogSD("⏳ Desistiu da linha reta (Tempo esgotado).")
-                break 
-            end
+            if tick() - tempoInicio > 5 then break end
             task.wait()
         end
         
-        local chegou = (hrp.Position - flatTarget).Magnitude < 5
-        if chegou then LogSD("🎯 Chegou na marra (linha reta)!") else LogSD("❌ Falhou na linha reta.") end
-        return chegou
+        return (hrp.Position - flatTarget).Magnitude < 5
     end
 end
 
