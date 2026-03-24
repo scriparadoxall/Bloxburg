@@ -2,6 +2,16 @@ local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 
+-- LIMPEZA DE LOOPS FANTASMAS ANTES DE CARREGAR
+-- Isso impede que o boneco fique bobó ao reexecutar o script
+if _G.BloxburgChef and typeof(_G.BloxburgChef.Stop) == "function" then
+    pcall(function() _G.BloxburgChef.Stop() end)
+end
+if _G.SmartDoor and typeof(_G.SmartDoor.Cancelar) == "function" then
+    pcall(function() _G.SmartDoor.Cancelar() end)
+end
+task.wait(0.2) -- Dá um tempinho para a thread antiga morrer
+
 local smartDoorURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/smart_door.lua?t=" .. tostring(tick())
 local loadDoorFunc, errDoor = loadstring(game:HttpGet(smartDoorURL))
 
