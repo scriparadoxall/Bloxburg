@@ -6,16 +6,15 @@ local SmartDoor = {}
 SmartDoor.CurrentWalkId = 0 
 local lastDoorClick = 0
 
--- Sistema de Logs integrado com a sua UI do Hub
+-- Sistema de Logs na sua UI
 local function LogSD(msg)
     if _G.BloxburgChef_AddLog then
-        _G.BloxburgChef_AddLog(msg, Color3.fromRGB(255, 170, 0)) -- Laranja para destacar
+        _G.BloxburgChef_AddLog(msg, Color3.fromRGB(255, 170, 0))
     else
         print(msg)
     end
 end
 
--- Função para frear o boneco e cancelar a rota
 function SmartDoor.Cancelar()
     SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
     LogSD("🛑 Rota Cancelada e freio puxado!")
@@ -27,36 +26,28 @@ function SmartDoor.Cancelar()
     end)
 end
 
--- Coleta as portas do mapa para desligar a colisão delas no cálculo
-local function GetDoors(scope)
+-- A GRANDE CORREÇÃO: Agora ele lê as portas no lugar certo (workspace.Plots)
+local function GetDoors()
     local doors = {}
-    local searchArea = scope or workspace
+    local plots = workspace:FindFirstChild("Plots")
+    if not plots then return doors end
 
-    if searchArea:FindFirstChild("House") then
-        local house = searchArea.House
-        if house:FindFirstChild("Walls") then
-            for _, wall in pairs(house.Walls:GetChildren()) do
-                if wall:FindFirstChild("ItemHolder") then
-                    for _, item in pairs(wall.ItemHolder:GetChildren()) do
-                        local name = string.lower(item.Name)
-                        if string.match(name, "door") or string.match(name, "porta") then
-                            table.insert(doors, item)
+    for _, plot in pairs(plots:GetChildren()) do
+        local house = plot:FindFirstChild("House")
+        if house then
+            local walls = house:FindFirstChild("Walls")
+            if walls then
+                for _, wall in pairs(walls:GetChildren()) do
+                    local itemHolder = wall:FindFirstChild("ItemHolder")
+                    if itemHolder then
+                        for _, item in pairs(itemHolder:GetChildren()) do
+                            local name = string.lower(item.Name)
+                            -- Acha qualquer coisa com "Door" ou "Porta" ("Panel Door", "Plain Door", etc)
+                            if string.find(name, "door") or string.find(name, "porta") then
+                                table.insert(doors, item)
+                            end
                         end
                     end
-                end
-            end
-        end
-        if house:FindFirstChild("Doors") then
-            for _, door in pairs(house.Doors:GetChildren()) do
-                table.insert(doors, door)
-            end
-        end
-    else
-        for _, obj in pairs(searchArea:GetDescendants()) do
-            if obj:IsA("Model") then
-                local name = string.lower(obj.Name)
-                if string.match(name, "door") or string.match(name, "porta") then
-                    table.insert(doors, obj)
                 end
             end
         end
@@ -64,39 +55,55 @@ local function GetDoors(scope)
     return doors
 end
 
--- Interage com a porta apenas lendo a UI do jogo
-local function HandleDoorInteraction()
+-- Como você pediu: Procura a porta mais perto e interage com ela
+local function HandleDoorInteraction(hrp, doors)
     if tick() - lastDoorClick < 1 then return end 
     
-    local PlayerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
-    if not PlayerGui then return end
+    local portaMaisPerto = nil
+    local menorDistancia = 7 -- Raio de 7 studs
 
-    local interactUI = PlayerGui:FindFirstChild("_interactUI")
-    if interactUI then
-        local center = interactUI:FindFirstChild("Center")
-        local button = center and center:FindFirstChild("Button")
-        local textLabel = button and button:FindFirstChild("TextLabel")
-        
-        if textLabel and textLabel.Text ~= "" then
-            local txt = string.lower(textLabel.Text)
+    -- Acha a porta física mais perto de você
+    for _, door in pairs(doors) do
+        if door and door.Parent then
+            local dist = (hrp.Position - door:GetPivot().Position).Magnitude
+            if dist < menorDistancia then
+                menorDistancia = dist
+                portaMaisPerto = door
+            end
+        end
+    end
+
+    -- Se tiver uma porta perto, ele verifica a UI pra abrir
+    if portaMaisPerto then
+        local PlayerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
+        if not PlayerGui then return end
+
+        local interactUI = PlayerGui:FindFirstChild("_interactUI")
+        if interactUI then
+            local center = interactUI:FindFirstChild("Center")
+            local button = center and center:FindFirstChild("Button")
+            local textLabel = button and button:FindFirstChild("TextLabel")
             
-            if string.find(txt, "open") or string.find(txt, "abrir") then
-                LogSD("🚪 Abrindo porta...")
-                lastDoorClick = tick()
-                task.spawn(function()
-                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                    task.wait(0.1)
-                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-                end)
-            elseif string.find(txt, "close") or string.find(txt, "fechar") then
-                return
+            if textLabel and textLabel.Text ~= "" then
+                local txt = string.lower(textLabel.Text)
+                
+                if string.find(txt, "open") or string.find(txt, "abrir") then
+                    LogSD("🚪 Porta próxima detectada! Abrindo...")
+                    lastDoorClick = tick()
+                    task.spawn(function()
+                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                        task.wait(0.1)
+                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                    end)
+                elseif string.find(txt, "close") or string.find(txt, "fechar") then
+                    return
+                end
             end
         end
     end
 end
 
--- Motor principal de caminhada
-function SmartDoor.IrPara(destino, escopo_portas)
+function SmartDoor.IrPara(destino)
     SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
     local myWalkId = SmartDoor.CurrentWalkId 
 
@@ -127,9 +134,10 @@ function SmartDoor.IrPara(destino, escopo_portas)
         return false 
     end
 
-    LogSD("📍 Calculando rota para o destino...")
+    LogSD("📍 Calculando rota...")
 
-    local doors = GetDoors(escopo_portas)
+    -- Pega todas as portas mapeadas e desliga a colisão pra traçar a rota (incluindo o ObjectModel.Door1)
+    local doors = GetDoors()
     local doorParts = {}
 
     for _, door in pairs(doors) do
@@ -141,9 +149,9 @@ function SmartDoor.IrPara(destino, escopo_portas)
         end
     end
 
-    -- CORREÇÃO AQUI: Boneco fininho para o Roblox não achar que a porta é pequena demais!
+    -- Como as portas estão desligadas, podemos voltar o AgentRadius para 1.2 pro boneco andar natural
     local path = PathfindingService:CreatePath({
-        AgentRadius = 0.5, 
+        AgentRadius = 1.2, 
         AgentHeight = 4, 
         AgentCanJump = true, 
         AgentMaxSlope = 45,
@@ -152,6 +160,7 @@ function SmartDoor.IrPara(destino, escopo_portas)
 
     local success, err = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
 
+    -- Liga as colisões de volta rapidinho pra casa não ficar quebrada
     for _, data in pairs(doorParts) do if data.part then data.part.CanCollide = data.coll end end
     for _, data in pairs(targetParts) do if data.part then data.part.CanCollide = data.coll end end
 
@@ -176,7 +185,7 @@ function SmartDoor.IrPara(destino, escopo_portas)
                 if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
                 
                 hum:MoveTo(wp.Position) 
-                HandleDoorInteraction() 
+                HandleDoorInteraction(hrp, doors) -- Passa as portas pra ele achar a mais perto!
 
                 if tick() - tempoChecagemStuck > 0.6 then
                     if (hrp.Position - lastPos).Magnitude < 1 then
@@ -219,7 +228,7 @@ function SmartDoor.IrPara(destino, escopo_portas)
             if SmartDoor.CurrentWalkId ~= myWalkId then return false end
             
             hum:MoveTo(walkPos)
-            HandleDoorInteraction() 
+            HandleDoorInteraction(hrp, doors) 
             
             if tick() - tempoChecagemStuck > 0.6 then
                 if (hrp.Position - lastPos).Magnitude < 1 then 
