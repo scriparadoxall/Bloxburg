@@ -6,15 +6,16 @@ local SmartDoor = {}
 SmartDoor.CurrentWalkId = 0 
 local lastDoorClick = 0
 
--- Manda o log direto pra UI do seu HUB!
+-- Sistema de Logs integrado com a sua UI do Hub
 local function LogSD(msg)
     if _G.BloxburgChef_AddLog then
-        _G.BloxburgChef_AddLog(msg, Color3.fromRGB(255, 170, 0)) -- Cor Laranja
+        _G.BloxburgChef_AddLog(msg, Color3.fromRGB(255, 170, 0)) -- Laranja para destacar
     else
         print(msg)
     end
 end
 
+-- Função para frear o boneco e cancelar a rota
 function SmartDoor.Cancelar()
     SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
     LogSD("🛑 Rota Cancelada e freio puxado!")
@@ -26,6 +27,7 @@ function SmartDoor.Cancelar()
     end)
 end
 
+-- Coleta as portas do mapa para desligar a colisão delas no cálculo
 local function GetDoors(scope)
     local doors = {}
     local searchArea = scope or workspace
@@ -62,6 +64,7 @@ local function GetDoors(scope)
     return doors
 end
 
+-- Interage com a porta apenas lendo a UI do jogo
 local function HandleDoorInteraction()
     if tick() - lastDoorClick < 1 then return end 
     
@@ -92,6 +95,7 @@ local function HandleDoorInteraction()
     end
 end
 
+-- Motor principal de caminhada
 function SmartDoor.IrPara(destino, escopo_portas)
     SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
     local myWalkId = SmartDoor.CurrentWalkId 
@@ -137,9 +141,10 @@ function SmartDoor.IrPara(destino, escopo_portas)
         end
     end
 
+    -- CORREÇÃO AQUI: Boneco fininho para o Roblox não achar que a porta é pequena demais!
     local path = PathfindingService:CreatePath({
-        AgentRadius = 1.5, 
-        AgentHeight = 5, 
+        AgentRadius = 0.5, 
+        AgentHeight = 4, 
         AgentCanJump = true, 
         AgentMaxSlope = 45,
         WaypointSpacing = 3 
