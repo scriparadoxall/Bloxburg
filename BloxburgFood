@@ -3,8 +3,6 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local TweenService = game:GetService("TweenService")
 local GuiService = game:GetService("GuiService")
 
--- VEJA QUE O PATHFINDING SERVICE SUMIU DAQUI! O script principal não calcula mais nada de rotas.
-
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local Camera = workspace.CurrentCamera
@@ -14,7 +12,6 @@ local isRunning = false
 local currentMacroId = 0
 local selectedFood = "Hot Dogs"
 
--- === DICIONÁRIOS DE AÇÕES ===
 local validActions = {
     "fry", "bake", "cook", "prepare", "stir", "mix", "chop", 
     "cut", "pour", "form", "garnish", "boil", "add", "blend",
@@ -36,7 +33,6 @@ local function Log(texto, cor)
     end
 end
 
--- === LEITURA DE AÇÃO ===
 local function GetCurrentAction()
     local hudGui = PlayerGui:FindFirstChild("HUDGui")
     if hudGui then
@@ -117,32 +113,26 @@ local function AimAtObject(obj)
     task.wait(0.5)
 end
 
--- === DELEGAÇÃO PURA PARA O MÓDULO SMART DOOR ===
 local function MoveToStation(name)
     local station = FindMyStation(name)
     if not station then return false end
 
     local myPlot = GetMyOwnPlot()
 
-    -- Verifica se você rodou o smart_door.lua primeiro
-    if type(getgenv().SmartDoor) ~= "table" or type(getgenv().SmartDoor.IrPara) ~= "function" then
-        Log("ERRO: Módulo SmartDoor não encontrado! Execute o smart_door.lua primeiro.", Color3.fromRGB(255, 50, 50))
+    if type(_G.SmartDoor) ~= "table" or type(_G.SmartDoor.IrPara) ~= "function" then
+        Log("ERRO: Módulo SmartDoor não encontrado! Execute o Hub.", Color3.fromRGB(255, 50, 50))
         return false
     end
 
-    -- O SCRIPT PRINCIPAL SÓ CHAMA A FUNÇÃO GLOBAL. NÃO CALCULA NADA.
-    local chegou_no_destino = getgenv().SmartDoor.IrPara(station, myPlot)
+    local chegou_no_destino = _G.SmartDoor.IrPara(station, myPlot)
 
-    -- Se o módulo avisou que chegou, a gente vira pro móvel e interage
     if chegou_no_destino then
         local hrp = LocalPlayer.Character.HumanoidRootPart
         local targetPos = station:GetPivot().Position
 
-        -- Vira o boneco e a câmera para o móvel
         hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
         AimAtObject(station)
 
-        -- Aperta E no balcão/geladeira
         task.wait(0.2)
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
         task.wait(0.05)
@@ -153,7 +143,6 @@ local function MoveToStation(name)
     return false
 end
 
--- === PROCESSADOR DE BOTÕES DO MINIGAME ===
 local function ProcessMinigameButtons()
     local acted = false
     local function HandleButton(b)
@@ -191,7 +180,6 @@ local function ProcessMinigameButtons()
     return acted
 end
 
--- === O NÚCLEO DE MONITORAMENTO ===
 local function MonitorAndCook(expectedAction)
     local lastActionTime = tick()
 
@@ -234,7 +222,6 @@ local function MonitorAndCook(expectedAction)
     return "stopped"
 end
 
--- === LOOP PRINCIPAL DE FARM ===
 function _G.BloxburgChef.Start(food)
     if isRunning then return end
     selectedFood = food or "Hot Dogs"
@@ -247,7 +234,6 @@ function _G.BloxburgChef.Start(food)
     task.spawn(function()
         while isRunning and currentMacroId == myId do
 
-            -- 1. FASE DA GELADEIRA
             local hasFood = false
 
             while isRunning and currentMacroId == myId and not hasFood do
@@ -332,7 +318,6 @@ function _G.BloxburgChef.Start(food)
                 end
             end
 
-            -- 2. FASE DE COZINHAR
             local cookingStatus = "cooking"
 
             while isRunning and currentMacroId == myId and cookingStatus ~= "finished" and cookingStatus ~= "timeout" do
