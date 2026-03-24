@@ -2,12 +2,13 @@ local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 
--- === 1. CARREGAR O MÓDULO SMART DOOR PRIMEIRO (Vem do seu GitHub) ===
+-- === 1. CARREGAR O MÓDULO SMART DOOR PRIMEIRO (A MÁGICA DO RETURN AQUI) ===
 local smartDoorURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/smart_door.lua?t=" .. tostring(tick())
-local loadDoor, errDoor = loadstring(game:HttpGet(smartDoorURL))
+local loadDoorFunc, errDoor = loadstring(game:HttpGet(smartDoorURL))
 
-if loadDoor then
-    loadDoor()
+if loadDoorFunc then
+    -- Aqui está o segredo: Pegamos o 'return' do arquivo e injetamos na memória global!
+    _G.SmartDoor = loadDoorFunc() 
 else
     warn("ERRO CRÍTICO AO CARREGAR O SMART DOOR: " .. tostring(errDoor))
     return
