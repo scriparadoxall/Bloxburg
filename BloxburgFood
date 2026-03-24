@@ -365,5 +365,15 @@ end
 function _G.BloxburgChef.Stop()
     isRunning = false
     currentMacroId = currentMacroId + 1
+    
+    if type(_G.SmartDoor) == "table" and type(_G.SmartDoor.Cancelar) == "function" then
+        _G.SmartDoor.Cancelar()
+    end
+    
+    local player = game:GetService("Players").LocalPlayer
+    if player.Character and player.Character:FindFirstChild("Humanoid") and player.Character:FindFirstChild("HumanoidRootPart") then
+        player.Character.Humanoid:MoveTo(player.Character.HumanoidRootPart.Position)
+    end
+    
     Log("Farm Parado.", Color3.fromRGB(255, 100, 100))
 end
