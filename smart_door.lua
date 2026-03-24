@@ -5,14 +5,37 @@ local Players = game:GetService("Players")
 local SmartDoor = {} 
 local lastDoorClick = 0
 
+-- BUSCA OTIMIZADA PARA O BLOXBURG (Evita lag pesquisando nas paredes que você achou)
 local function GetDoors(scope)
     local doors = {}
-    local searchArea = (scope and scope:FindFirstChild("House")) or scope or workspace
-    for _, obj in pairs(searchArea:GetDescendants()) do
-        if obj:IsA("Model") then
-            local name = string.lower(obj.Name)
-            if string.match(name, "door") or string.match(name, "porta") then
-                table.insert(doors, obj)
+    local searchArea = scope or workspace
+    
+    if searchArea:FindFirstChild("House") then
+        local house = searchArea.House
+        if house:FindFirstChild("Walls") then
+            for _, wall in pairs(house.Walls:GetChildren()) do
+                if wall:FindFirstChild("ItemHolder") then
+                    for _, item in pairs(wall.ItemHolder:GetChildren()) do
+                        local name = string.lower(item.Name)
+                        if string.match(name, "door") or string.match(name, "porta") then
+                            table.insert(doors, item)
+                        end
+                    end
+                end
+            end
+        end
+        if house:FindFirstChild("Doors") then
+            for _, door in pairs(house.Doors:GetChildren()) do
+                table.insert(doors, door)
+            end
+        end
+    else
+        for _, obj in pairs(searchArea:GetDescendants()) do
+            if obj:IsA("Model") then
+                local name = string.lower(obj.Name)
+                if string.match(name, "door") or string.match(name, "porta") then
+                    table.insert(doors, obj)
+                end
             end
         end
     end
@@ -37,7 +60,8 @@ local function OpenNearbyDoors(hrp, doors)
     end
 end
 
-getgenv().SmartDoor.IrPara = function(destino, escopo_portas)
+-- SINTAXE SEGURA (Sem getgenv aqui na declaração para não dar erro no executor)
+function SmartDoor.IrPara(destino, escopo_portas)
     local player = Players.LocalPlayer
     local char = player.Character
     if not char or not char:FindFirstChild("Humanoid") or not char:FindFirstChild("HumanoidRootPart") then 
@@ -106,7 +130,7 @@ getgenv().SmartDoor.IrPara = function(destino, escopo_portas)
 
             local tempoInicio = tick()
             
-            -- A MÁGICA DA FLUIDEZ AQUI: > 3.5 studs em vez de 2.5
+            -- A MÁGICA DA FLUIDEZ AQUI: > 3.5 studs e task.wait() sem números
             while (hrp.Position - wp.Position).Magnitude > 3.5 do
                 OpenNearbyDoors(hrp, doors) 
                 
@@ -121,7 +145,7 @@ getgenv().SmartDoor.IrPara = function(destino, escopo_portas)
                     return true
                 end
                 
-                task.wait() -- Sem número, atualiza super rápido e remove qualquer engasgo
+                task.wait() 
             end
         end
         return true
@@ -141,4 +165,5 @@ getgenv().SmartDoor.IrPara = function(destino, escopo_portas)
     end
 end
 
-getgenv().SmartDoor = SmartDoor
+-- EXPORTA PARA O _G (Resolve definitivamente o problema de Nil do Delta)
+_G.SmartDoor = SmartDoor
