@@ -6,7 +6,6 @@ local SmartDoor = {}
 SmartDoor.CurrentWalkId = 0 
 local lastDoorClick = 0
 
--- Sistema de Logs na sua UI
 local function LogSD(msg)
     if _G.BloxburgChef_AddLog then
         _G.BloxburgChef_AddLog(msg, Color3.fromRGB(255, 170, 0))
@@ -26,7 +25,6 @@ function SmartDoor.Cancelar()
     end)
 end
 
--- Acha TODAS as portas da casa lendo o Plot
 local function GetDoors()
     local doors = {}
     local plots = workspace:FindFirstChild("Plots")
@@ -54,7 +52,6 @@ local function GetDoors()
     return doors
 end
 
--- Tenta interagir com a porta e avisa se conseguiu (para o boneco pausar)
 local function HandleDoorInteraction(hrp, doors)
     if tick() - lastDoorClick < 1.5 then return false end 
     
@@ -84,15 +81,16 @@ local function HandleDoorInteraction(hrp, doors)
             if textLabel and textLabel.Text ~= "" then
                 local txt = string.lower(textLabel.Text)
                 
+                -- SÓ retorna TRUE se ele interagir para ABRIR
                 if string.find(txt, "open") or string.find(txt, "abrir") then
-                    LogSD("🚪 Porta detectada! Pressionando E...")
+                    LogSD("🚪 Porta abrindo! Pressionou E...")
                     lastDoorClick = tick()
                     task.spawn(function()
                         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
                         task.wait(0.1)
                         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
                     end)
-                    return true -- Retorna TRUE para o bot saber que precisa esperar ela abrir
+                    return true 
                 elseif string.find(txt, "close") or string.find(txt, "fechar") then
                     return false
                 end
@@ -133,125 +131,143 @@ function SmartDoor.IrPara(destino)
         return false 
     end
 
-    LogSD("📍 Preparando mapa para calcular rota...")
+    -- SISTEMA DE RECÁLCULO (O bot tenta até 5 vezes chegar na geladeira)
+    local maxTentativas = 5
+    local tentativaAtual = 0
 
-    local doors = GetDoors()
-    local doorParts = {}
+    while tentativaAtual < maxTentativas do
+        if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
+        tentativaAtual = tentativaAtual + 1
+        LogSD("📍 Calculando rota (Tentativa " .. tentativaAtual .. "/5)...")
 
-    for _, door in pairs(doors) do
-        for _, part in pairs(door:GetDescendants()) do
-            if part:IsA("BasePart") then
-                table.insert(doorParts, {part = part, coll = part.CanCollide})
-                part.CanCollide = false
+        local doors = GetDoors()
+        local doorParts = {}
+
+        for _, door in pairs(doors) do
+            for _, part in pairs(door:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    table.insert(doorParts, {part = part, coll = part.CanCollide})
+                    part.CanCollide = false
+                end
             end
         end
-    end
 
-    -- O GRANDE SEGREDO: Dá um tempinho pro Roblox atualizar o mapa 3D sem as portas!
-    task.wait(0.15)
+        task.wait(0.15)
 
-    local path = PathfindingService:CreatePath({
-        AgentRadius = 1.0, 
-        AgentHeight = 4, 
-        AgentCanJump = true, 
-        AgentMaxSlope = 45,
-        WaypointSpacing = 3 
-    })
+        local path = PathfindingService:CreatePath({
+            AgentRadius = 1.0, 
+            AgentHeight = 4, 
+            AgentCanJump = true, 
+            AgentMaxSlope = 45,
+            WaypointSpacing = 3 
+        })
 
-    local success, err = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
+        local success, err = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
 
-    -- Liga as colisões de volta
-    for _, data in pairs(doorParts) do if data.part then data.part.CanCollide = data.coll end end
-    for _, data in pairs(targetParts) do if data.part then data.part.CanCollide = data.coll end end
+        for _, data in pairs(doorParts) do if data.part then data.part.CanCollide = data.coll end end
+        for _, data in pairs(targetParts) do if data.part then data.part.CanCollide = data.coll end end
 
-    if success and path.Status == Enum.PathStatus.Success then
-        local waypoints = path:GetWaypoints()
-        LogSD("✅ Rota traçada por dentro da casa (" .. #waypoints .. " passos).")
+        if success and path.Status == Enum.PathStatus.Success then
+            local waypoints = path:GetWaypoints()
+            LogSD("✅ Rota traçada (" .. #waypoints .. " passos).")
+            
+            local precisouRecalcular = false
 
-        for i, wp in ipairs(waypoints) do
-            if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
+            for i, wp in ipairs(waypoints) do
+                if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
+                if i == 1 and (hrp.Position - wp.Position).Magnitude < 3 then continue end
+                if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
 
-            if i == 1 and (hrp.Position - wp.Position).Magnitude < 3 then
-                continue
+                local tempoInicio = tick()
+                local tempoChecagemStuck = tick()
+                local lastPos = hrp.Position
+
+                while (hrp.Position - wp.Position).Magnitude > 3.5 do
+                    if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
+                    
+                    hum:MoveTo(wp.Position) 
+                    
+                    -- AQUI ACONTECE A MÁGICA DO RECÁLCULO
+                    if HandleDoorInteraction(hrp, doors) then
+                        LogSD("⏳ Recalculando a rota pelo novo caminho...")
+                        hum:MoveTo(hrp.Position) -- Freia o boneco na hora
+                        task.wait(1.2) -- Dá tempo pra porta abrir de verdade
+                        precisouRecalcular = true
+                        break -- Quebra o loop de andar
+                    end
+
+                    if tick() - tempoChecagemStuck > 0.6 then
+                        if (hrp.Position - lastPos).Magnitude < 1 then
+                            LogSD("⚠️ Preso! Forçando pulo...")
+                            hum.Jump = true 
+                        end
+                        lastPos = hrp.Position
+                        tempoChecagemStuck = tick()
+                    end
+
+                    if tick() - tempoInicio > 3.5 then break end
+                    task.wait() 
+                end
+
+                if precisouRecalcular then
+                    break -- Quebra o loop de waypoints pra voltar pro inicio do While(Tentativas)
+                end
+            end
+            
+            -- Se ele terminou a rota toda sem esbarrar em porta nenhuma:
+            if not precisouRecalcular then
+                if (hrp.Position - targetPos).Magnitude < 5 then
+                    LogSD("🎯 Destino (Geladeira) alcançado com sucesso!")
+                    return true
+                else
+                    LogSD("❌ A rota acabou, mas está longe. Tentando de novo...")
+                end
             end
 
-            if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
-
+        else
+            -- Se não achar caminho, tenta ir reto. Se esbarrar na porta no caminho, recalcula!
+            LogSD("🚨 Caminho bloqueado! Andando reto pra achar porta...")
+            
+            local flatTarget = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)
+            local dir = (hrp.Position - flatTarget).Unit
+            local walkPos = flatTarget + (dir * 2.8)
+            
             local tempoInicio = tick()
             local tempoChecagemStuck = tick()
             local lastPos = hrp.Position
+            local achouPorta = false
 
-            while (hrp.Position - wp.Position).Magnitude > 3.5 do
-                if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
+            while (hrp.Position - walkPos).Magnitude > 2 do
+                if SmartDoor.CurrentWalkId ~= myWalkId then return false end
                 
-                hum:MoveTo(wp.Position) 
+                hum:MoveTo(walkPos)
                 
-                -- Se ele acabou de apertar E na porta, ele faz uma pausa pra ela abrir!
-                local abriuPorta = HandleDoorInteraction(hrp, doors)
-                if abriuPorta then
-                    LogSD("⏳ Esperando a porta abrir...")
-                    hum.Jump = true -- Dá um pulinho pra evitar bater
-                    task.wait(0.6)
+                if HandleDoorInteraction(hrp, doors) then
+                    LogSD("⏳ Porta destrancada na marra! Recalculando...")
+                    hum:MoveTo(hrp.Position)
+                    task.wait(1.2)
+                    achouPorta = true
+                    break
                 end
-
+                
                 if tick() - tempoChecagemStuck > 0.6 then
-                    if (hrp.Position - lastPos).Magnitude < 1 then
-                        LogSD("⚠️ Preso! Forçando pulo...")
-                        hum.Jump = true 
-                    end
+                    if (hrp.Position - lastPos).Magnitude < 1 then hum.Jump = true end
                     lastPos = hrp.Position
                     tempoChecagemStuck = tick()
                 end
 
-                if tick() - tempoInicio > 3.5 then 
-                    break 
-                end
-
-                if i >= #waypoints - 1 and (hrp.Position - targetPos).Magnitude < 4.5 then
-                    LogSD("🎯 Destino alcançado com sucesso!")
-                    return true
-                end
-
-                task.wait() 
+                if tick() - tempoInicio > 5 then break end
+                task.wait()
+            end
+            
+            if not achouPorta then
+                if (hrp.Position - flatTarget).Magnitude < 5 then return true end
             end
         end
-        
-        local chegou = (hrp.Position - targetPos).Magnitude < 5
-        return chegou
-    else
-        LogSD("🚨 Pathfinding falhou! (Rota reta ativada)")
-        
-        local flatTarget = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)
-        local dir = (hrp.Position - flatTarget).Unit
-        local walkPos = flatTarget + (dir * 2.8)
-        
-        local tempoInicio = tick()
-        local tempoChecagemStuck = tick()
-        local lastPos = hrp.Position
-
-        while (hrp.Position - walkPos).Magnitude > 2 do
-            if SmartDoor.CurrentWalkId ~= myWalkId then return false end
-            
-            hum:MoveTo(walkPos)
-            
-            if HandleDoorInteraction(hrp, doors) then
-                task.wait(0.6)
-            end
-            
-            if tick() - tempoChecagemStuck > 0.6 then
-                if (hrp.Position - lastPos).Magnitude < 1 then 
-                    hum.Jump = true 
-                end
-                lastPos = hrp.Position
-                tempoChecagemStuck = tick()
-            end
-
-            if tick() - tempoInicio > 5 then break end
-            task.wait()
-        end
-        
-        return (hrp.Position - flatTarget).Magnitude < 5
     end
+
+    LogSD("❌ Falhou após várias tentativas. Destino inalcançável.")
+    return false
 end
 
 return SmartDoor
