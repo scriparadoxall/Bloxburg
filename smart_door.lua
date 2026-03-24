@@ -8,7 +8,7 @@ local lastDoorClick = 0
 local function GetDoors(scope)
     local doors = {}
     local searchArea = scope or workspace
-    
+
     if searchArea:FindFirstChild("House") then
         local house = searchArea.House
         if house:FindFirstChild("Walls") then
@@ -42,18 +42,43 @@ local function GetDoors(scope)
 end
 
 local function OpenNearbyDoors(hrp, doors)
-    if tick() - lastDoorClick < 2.5 then return end
+    -- Cooldown reduzido de 2.5s para 1s, pois agora ele é mais inteligente e não erra
+    if tick() - lastDoorClick < 1 then return end 
+    
     for _, door in pairs(doors) do
         if door and door.Parent then
             local dist = (hrp.Position - door:GetPivot().Position).Magnitude
             if dist < 6.5 then 
-                lastDoorClick = tick()
-                task.spawn(function()
-                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                    task.wait(0.1)
-                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-                end)
-                break 
+                
+                -- Checa a UI para ver se a porta está aberta ou fechada
+                local PlayerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
+                if PlayerGui then
+                    local interactUI = PlayerGui:FindFirstChild("_interactUI")
+                    if interactUI then
+                        local center = interactUI:FindFirstChild("Center")
+                        local button = center and center:FindFirstChild("Button")
+                        local textLabel = button and button:FindFirstChild("TextLabel")
+                        
+                        if textLabel and textLabel.Text ~= "" then
+                            local txt = string.lower(textLabel.Text)
+                            
+                            -- Se disser "Open" ou "Abrir", ele aperta E
+                            if string.find(txt, "open") or string.find(txt, "abrir") then
+                                lastDoorClick = tick()
+                                task.spawn(function()
+                                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                                    task.wait(0.1)
+                                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                                end)
+                                break 
+                                
+                            -- Se disser "Close" ou "Fechar", ele passa reto
+                            elseif string.find(txt, "close") or string.find(txt, "fechar") then
+                                break 
+                            end
+                        end
+                    end
+                end
             end
         end
     end
@@ -74,7 +99,7 @@ function SmartDoor.IrPara(destino, escopo_portas)
 
     if typeof(destino) == "Instance" then
         targetPos = destino:IsA("Model") and destino:GetPivot().Position or destino.Position
-        
+
         for _, part in pairs(destino:GetDescendants()) do
             if part:IsA("BasePart") then
                 table.insert(targetParts, {part = part, coll = part.CanCollide})
@@ -114,7 +139,7 @@ function SmartDoor.IrPara(destino, escopo_portas)
 
     if success and path.Status == Enum.PathStatus.Success then
         local waypoints = path:GetWaypoints()
-        
+
         for i, wp in ipairs(waypoints) do
             if i == 1 and (hrp.Position - wp.Position).Magnitude < 3 then
                 continue
@@ -124,19 +149,19 @@ function SmartDoor.IrPara(destino, escopo_portas)
             hum:MoveTo(wp.Position)
 
             local tempoInicio = tick()
-            
+
             while (hrp.Position - wp.Position).Magnitude > 3.5 do
                 OpenNearbyDoors(hrp, doors) 
-                
+
                 if tick() - tempoInicio > 2 then 
                     hum.Jump = true 
                     break 
                 end
-                
+
                 if i >= #waypoints - 1 and (hrp.Position - flatTarget).Magnitude < 3.2 then
                     return true
                 end
-                
+
                 task.wait() 
             end
         end
@@ -145,7 +170,7 @@ function SmartDoor.IrPara(destino, escopo_portas)
         local dir = (hrp.Position - flatTarget).Unit
         local walkPos = flatTarget + (dir * 2.8)
         hum:MoveTo(walkPos)
-        
+
         local tempoInicio = tick()
         while (hrp.Position - walkPos).Magnitude > 1.5 do
             OpenNearbyDoors(hrp, doors)
