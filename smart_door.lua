@@ -6,9 +6,18 @@ local SmartDoor = {}
 SmartDoor.CurrentWalkId = 0 
 local lastDoorClick = 0
 
+-- Manda o log direto pra UI do seu HUB!
+local function LogSD(msg)
+    if _G.BloxburgChef_AddLog then
+        _G.BloxburgChef_AddLog(msg, Color3.fromRGB(255, 170, 0)) -- Cor Laranja
+    else
+        print(msg)
+    end
+end
+
 function SmartDoor.Cancelar()
     SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
-    print("[SmartDoor] 🛑 Rota Cancelada!")
+    LogSD("🛑 Rota Cancelada e freio puxado!")
     pcall(function()
         local char = Players.LocalPlayer.Character
         if char and char:FindFirstChild("Humanoid") and char:FindFirstChild("HumanoidRootPart") then
@@ -69,7 +78,7 @@ local function HandleDoorInteraction()
             local txt = string.lower(textLabel.Text)
             
             if string.find(txt, "open") or string.find(txt, "abrir") then
-                print("[SmartDoor] 🚪 Abrindo porta!")
+                LogSD("🚪 Abrindo porta...")
                 lastDoorClick = tick()
                 task.spawn(function()
                     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
@@ -114,7 +123,7 @@ function SmartDoor.IrPara(destino, escopo_portas)
         return false 
     end
 
-    print("[SmartDoor] 📍 Iniciando cálculo de rota para: ", targetPos)
+    LogSD("📍 Calculando rota para o destino...")
 
     local doors = GetDoors(escopo_portas)
     local doorParts = {}
@@ -128,7 +137,6 @@ function SmartDoor.IrPara(destino, escopo_portas)
         end
     end
 
-    -- Ajustado para 1.5 para ele caber nas portas do Bloxburg de novo
     local path = PathfindingService:CreatePath({
         AgentRadius = 1.5, 
         AgentHeight = 5, 
@@ -142,15 +150,9 @@ function SmartDoor.IrPara(destino, escopo_portas)
     for _, data in pairs(doorParts) do if data.part then data.part.CanCollide = data.coll end end
     for _, data in pairs(targetParts) do if data.part then data.part.CanCollide = data.coll end end
 
-    if success then
-        print("[SmartDoor] ⚙️ Status do Pathfinding:", tostring(path.Status))
-    else
-        warn("[SmartDoor] ❌ Erro ao calcular rota:", err)
-    end
-
     if success and path.Status == Enum.PathStatus.Success then
         local waypoints = path:GetWaypoints()
-        print("[SmartDoor] ✅ Rota inteligente criada com", #waypoints, "passos.")
+        LogSD("✅ Rota criada com " .. #waypoints .. " passos.")
 
         for i, wp in ipairs(waypoints) do
             if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
@@ -173,7 +175,7 @@ function SmartDoor.IrPara(destino, escopo_portas)
 
                 if tick() - tempoChecagemStuck > 0.6 then
                     if (hrp.Position - lastPos).Magnitude < 1 then
-                        print("[SmartDoor] ⚠️ Boneco travou fisicamente! Pulando...")
+                        LogSD("⚠️ Preso! Pulando para tentar sair...")
                         hum.Jump = true 
                     end
                     lastPos = hrp.Position
@@ -181,12 +183,12 @@ function SmartDoor.IrPara(destino, escopo_portas)
                 end
 
                 if tick() - tempoInicio > 3 then 
-                    print("[SmartDoor] ⏳ Demorou muito num waypoint, pulando pro próximo.")
+                    LogSD("⏳ Ponto demorou muito, ignorando...")
                     break 
                 end
 
                 if i >= #waypoints - 1 and (hrp.Position - targetPos).Magnitude < 4.5 then
-                    print("[SmartDoor] 🎯 Chegou no destino via rota inteligente!")
+                    LogSD("🎯 Destino alcançado!")
                     return true
                 end
 
@@ -194,14 +196,11 @@ function SmartDoor.IrPara(destino, escopo_portas)
             end
         end
         
-        if (hrp.Position - targetPos).Magnitude < 5 then
-            return true
-        else
-            print("[SmartDoor] ❌ Fim da rota, mas ainda está longe do alvo.")
-            return false
-        end
+        local chegou = (hrp.Position - targetPos).Magnitude < 5
+        if not chegou then LogSD("❌ Rota acabou mas não chegou perto.") end
+        return chegou
     else
-        warn("[SmartDoor] 🚨 Pathfinding falhou! Usando rota burra (linha reta).")
+        LogSD("🚨 Pathfinding falhou! Tentando ir em linha reta...")
         
         local flatTarget = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)
         local dir = (hrp.Position - flatTarget).Unit
@@ -219,7 +218,7 @@ function SmartDoor.IrPara(destino, escopo_portas)
             
             if tick() - tempoChecagemStuck > 0.6 then
                 if (hrp.Position - lastPos).Magnitude < 1 then 
-                    print("[SmartDoor] ⚠️ Travado na linha reta! Pulando...")
+                    LogSD("⚠️ Travado na linha reta! Pulando...")
                     hum.Jump = true 
                 end
                 lastPos = hrp.Position
@@ -227,14 +226,14 @@ function SmartDoor.IrPara(destino, escopo_portas)
             end
 
             if tick() - tempoInicio > 5 then 
-                print("[SmartDoor] ⏳ Desistiu da linha reta por tempo.")
+                LogSD("⏳ Desistiu da linha reta (Tempo esgotado).")
                 break 
             end
             task.wait()
         end
         
         local chegou = (hrp.Position - flatTarget).Magnitude < 5
-        if chegou then print("[SmartDoor] 🎯 Chegou no destino na linha reta!") end
+        if chegou then LogSD("🎯 Chegou na marra (linha reta)!") else LogSD("❌ Falhou na linha reta.") end
         return chegou
     end
 end
