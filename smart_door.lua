@@ -25,6 +25,7 @@ function SmartDoor.Cancelar()
     end)
 end
 
+-- Pega todas as portas de todas as paredes do Plot
 local function GetDoors()
     local doors = {}
     local plots = workspace:FindFirstChild("Plots")
@@ -52,11 +53,12 @@ local function GetDoors()
     return doors
 end
 
+-- Tenta interagir (apertar E). Retorna TRUE só se ele clicar em "Open"
 local function HandleDoorInteraction(hrp, doors)
     if tick() - lastDoorClick < 1.5 then return false end 
     
     local portaMaisPerto = nil
-    local menorDistancia = 7 
+    local menorDistancia = 8 
 
     for _, door in pairs(doors) do
         if door and door.Parent then
@@ -80,10 +82,8 @@ local function HandleDoorInteraction(hrp, doors)
             
             if textLabel and textLabel.Text ~= "" then
                 local txt = string.lower(textLabel.Text)
-                
-                -- SÓ retorna TRUE se ele interagir para ABRIR
                 if string.find(txt, "open") or string.find(txt, "abrir") then
-                    LogSD("🚪 Porta abrindo! Pressionou E...")
+                    LogSD("🚪 Porta encontrada! Abrindo...")
                     lastDoorClick = tick()
                     task.spawn(function()
                         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
@@ -114,62 +114,38 @@ function SmartDoor.IrPara(destino)
     local hum = char.Humanoid
 
     local targetPos
-    local targetParts = {} 
-
     if typeof(destino) == "Instance" then
         targetPos = destino:IsA("Model") and destino:GetPivot().Position or destino.Position
-
-        for _, part in pairs(destino:GetDescendants()) do
-            if part:IsA("BasePart") then
-                table.insert(targetParts, {part = part, coll = part.CanCollide})
-                part.CanCollide = false
-            end
-        end
     elseif typeof(destino) == "Vector3" then 
         targetPos = destino
     else 
         return false 
     end
 
-    -- SISTEMA DE RECÁLCULO (O bot tenta até 5 vezes chegar na geladeira)
     local maxTentativas = 5
     local tentativaAtual = 0
 
     while tentativaAtual < maxTentativas do
         if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
         tentativaAtual = tentativaAtual + 1
-        LogSD("📍 Calculando rota (Tentativa " .. tentativaAtual .. "/5)...")
+        LogSD("📍 Calculando rota pra geladeira (Tentativa " .. tentativaAtual .. "/5)...")
 
         local doors = GetDoors()
-        local doorParts = {}
 
-        for _, door in pairs(doors) do
-            for _, part in pairs(door:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    table.insert(doorParts, {part = part, coll = part.CanCollide})
-                    part.CanCollide = false
-                end
-            end
-        end
-
-        task.wait(0.15)
-
+        -- Tenta calcular a rota DIRETO pra geladeira (sem mexer em colisão)
         local path = PathfindingService:CreatePath({
             AgentRadius = 1.0, 
             AgentHeight = 4, 
             AgentCanJump = true, 
-            AgentMaxSlope = 45,
             WaypointSpacing = 3 
         })
 
         local success, err = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
 
-        for _, data in pairs(doorParts) do if data.part then data.part.CanCollide = data.coll end end
-        for _, data in pairs(targetParts) do if data.part then data.part.CanCollide = data.coll end end
-
         if success and path.Status == Enum.PathStatus.Success then
+            -- CAMINHO LIVRE! Vai até a geladeira.
             local waypoints = path:GetWaypoints()
-            LogSD("✅ Rota traçada (" .. #waypoints .. " passos).")
+            LogSD("✅ Rota livre encontrada! Andando...")
             
             local precisouRecalcular = false
 
@@ -184,23 +160,18 @@ function SmartDoor.IrPara(destino)
 
                 while (hrp.Position - wp.Position).Magnitude > 3.5 do
                     if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
-                    
                     hum:MoveTo(wp.Position) 
                     
-                    -- AQUI ACONTECE A MÁGICA DO RECÁLCULO
                     if HandleDoorInteraction(hrp, doors) then
-                        LogSD("⏳ Recalculando a rota pelo novo caminho...")
-                        hum:MoveTo(hrp.Position) -- Freia o boneco na hora
-                        task.wait(1.2) -- Dá tempo pra porta abrir de verdade
+                        LogSD("⏳ Abriu uma porta no meio do caminho! Recalculando...")
+                        hum:MoveTo(hrp.Position)
+                        task.wait(1.2)
                         precisouRecalcular = true
-                        break -- Quebra o loop de andar
+                        break
                     end
 
                     if tick() - tempoChecagemStuck > 0.6 then
-                        if (hrp.Position - lastPos).Magnitude < 1 then
-                            LogSD("⚠️ Preso! Forçando pulo...")
-                            hum.Jump = true 
-                        end
+                        if (hrp.Position - lastPos).Magnitude < 1 then hum.Jump = true end
                         lastPos = hrp.Position
                         tempoChecagemStuck = tick()
                     end
@@ -209,64 +180,93 @@ function SmartDoor.IrPara(destino)
                     task.wait() 
                 end
 
-                if precisouRecalcular then
-                    break -- Quebra o loop de waypoints pra voltar pro inicio do While(Tentativas)
-                end
+                if precisouRecalcular then break end
             end
             
-            -- Se ele terminou a rota toda sem esbarrar em porta nenhuma:
             if not precisouRecalcular then
                 if (hrp.Position - targetPos).Magnitude < 5 then
-                    LogSD("🎯 Destino (Geladeira) alcançado com sucesso!")
+                    LogSD("🎯 Destino alcançado com sucesso!")
                     return true
-                else
-                    LogSD("❌ A rota acabou, mas está longe. Tentando de novo...")
                 end
             end
 
         else
-            -- Se não achar caminho, tenta ir reto. Se esbarrar na porta no caminho, recalcula!
-            LogSD("🚨 Caminho bloqueado! Andando reto pra achar porta...")
+            -- COMO VOCÊ DISSE: A rota falhou. Tá trancado! Vamos achar a porta mais perto!
+            LogSD("🚨 Caminho bloqueado! Calculando rota até a porta mais próxima...")
             
-            local flatTarget = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)
-            local dir = (hrp.Position - flatTarget).Unit
-            local walkPos = flatTarget + (dir * 2.8)
-            
-            local tempoInicio = tick()
-            local tempoChecagemStuck = tick()
-            local lastPos = hrp.Position
-            local achouPorta = false
+            local bestDoor = nil
+            local bestDist = math.huge
 
-            while (hrp.Position - walkPos).Magnitude > 2 do
-                if SmartDoor.CurrentWalkId ~= myWalkId then return false end
-                
-                hum:MoveTo(walkPos)
-                
-                if HandleDoorInteraction(hrp, doors) then
-                    LogSD("⏳ Porta destrancada na marra! Recalculando...")
-                    hum:MoveTo(hrp.Position)
-                    task.wait(1.2)
-                    achouPorta = true
-                    break
+            for _, door in pairs(doors) do
+                if door and door.Parent then
+                    local dPos = door:GetPivot().Position
+                    local dist = (hrp.Position - dPos).Magnitude
+                    if dist < bestDist then
+                        bestDist = dist
+                        bestDoor = door
+                    end
                 end
-                
-                if tick() - tempoChecagemStuck > 0.6 then
-                    if (hrp.Position - lastPos).Magnitude < 1 then hum.Jump = true end
-                    lastPos = hrp.Position
-                    tempoChecagemStuck = tick()
-                end
-
-                if tick() - tempoInicio > 5 then break end
-                task.wait()
             end
-            
-            if not achouPorta then
-                if (hrp.Position - flatTarget).Magnitude < 5 then return true end
+
+            if bestDoor then
+                local doorPos = bestDoor:GetPivot().Position
+                LogSD("🚶 Indo até a porta pra destrancar...")
+
+                -- Agora ele calcula a rota SÓ ATÉ A PORTA!
+                local doorPath = PathfindingService:CreatePath({ AgentRadius = 1.0, AgentHeight = 4, AgentCanJump = true })
+                doorPath:ComputeAsync(hrp.Position, doorPos)
+
+                local dWaypoints = {}
+                if doorPath.Status == Enum.PathStatus.Success then
+                    dWaypoints = doorPath:GetWaypoints()
+                else
+                    -- Se der erro até na porta, ele anda reto pra ela
+                    table.insert(dWaypoints, {Position = doorPos, Action = Enum.PathWaypointAction.Walk})
+                end
+
+                local abriuPorta = false
+
+                for i, wp in ipairs(dWaypoints) do
+                    if SmartDoor.CurrentWalkId ~= myWalkId then return false end
+                    if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
+
+                    local tempoInicio = tick()
+                    local tempoChecagemStuck = tick()
+                    local lastPos = hrp.Position
+
+                    while (hrp.Position - wp.Position).Magnitude > 3 do
+                        if SmartDoor.CurrentWalkId ~= myWalkId then return false end
+                        hum:MoveTo(wp.Position)
+
+                        if HandleDoorInteraction(hrp, doors) then
+                            LogSD("✅ A porta abriu! Recalculando a rota pra geladeira...")
+                            hum:MoveTo(hrp.Position) -- Freia o boneco pra não bater
+                            task.wait(1.5) -- Espera a animação da porta no jogo abrir de verdade
+                            abriuPorta = true
+                            break
+                        end
+
+                        if tick() - tempoChecagemStuck > 0.6 then
+                            if (hrp.Position - lastPos).Magnitude < 1 then hum.Jump = true end
+                            lastPos = hrp.Position
+                            tempoChecagemStuck = tick()
+                        end
+
+                        if tick() - tempoInicio > 4 then break end
+                        task.wait()
+                    end
+                    if abriuPorta then break end -- Volta pro loop principal (pra tentar ir pra geladeira de novo)
+                end
+            else
+                LogSD("❌ Nenhuma porta encontrada! Tentando ir reto...")
+                local flatTarget = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)
+                hum:MoveTo(flatTarget)
+                task.wait(2)
             end
         end
     end
 
-    LogSD("❌ Falhou após várias tentativas. Destino inalcançável.")
+    LogSD("❌ Falhou após várias tentativas. Casa totalmente trancada.")
     return false
 end
 
