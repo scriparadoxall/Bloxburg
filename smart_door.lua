@@ -5,7 +5,6 @@ local Players = game:GetService("Players")
 local SmartDoor = {} 
 local lastDoorClick = 0
 
--- BUSCA OTIMIZADA PARA O BLOXBURG (Evita lag pesquisando nas paredes que você achou)
 local function GetDoors(scope)
     local doors = {}
     local searchArea = scope or workspace
@@ -60,7 +59,6 @@ local function OpenNearbyDoors(hrp, doors)
     end
 end
 
--- SINTAXE SEGURA (Sem getgenv aqui na declaração para não dar erro no executor)
 function SmartDoor.IrPara(destino, escopo_portas)
     local player = Players.LocalPlayer
     local char = player.Character
@@ -77,7 +75,6 @@ function SmartDoor.IrPara(destino, escopo_portas)
     if typeof(destino) == "Instance" then
         targetPos = destino:IsA("Model") and destino:GetPivot().Position or destino.Position
         
-        -- MODO FANTASMA: Desliga a colisão do móvel temporariamente
         for _, part in pairs(destino:GetDescendants()) do
             if part:IsA("BasePart") then
                 table.insert(targetParts, {part = part, coll = part.CanCollide})
@@ -112,7 +109,6 @@ function SmartDoor.IrPara(destino, escopo_portas)
 
     local success, err = pcall(function() path:ComputeAsync(hrp.Position, flatTarget) end)
 
-    -- Restaura a colisão instantaneamente
     for _, data in pairs(doorParts) do if data.part then data.part.CanCollide = data.coll end end
     for _, data in pairs(targetParts) do if data.part then data.part.CanCollide = data.coll end end
 
@@ -120,7 +116,6 @@ function SmartDoor.IrPara(destino, escopo_portas)
         local waypoints = path:GetWaypoints()
         
         for i, wp in ipairs(waypoints) do
-            -- Evita o solavanco inicial se o ponto estiver muito perto
             if i == 1 and (hrp.Position - wp.Position).Magnitude < 3 then
                 continue
             end
@@ -130,17 +125,14 @@ function SmartDoor.IrPara(destino, escopo_portas)
 
             local tempoInicio = tick()
             
-            -- A MÁGICA DA FLUIDEZ AQUI: > 3.5 studs e task.wait() sem números
             while (hrp.Position - wp.Position).Magnitude > 3.5 do
                 OpenNearbyDoors(hrp, doors) 
                 
-                -- Anti-Stuck por tempo (se ficar preso em algo invisível por 2s, pula)
                 if tick() - tempoInicio > 2 then 
                     hum.Jump = true 
                     break 
                 end
                 
-                -- Se estiver a chegar ao móvel (últimos waypoints), trava em segurança
                 if i >= #waypoints - 1 and (hrp.Position - flatTarget).Magnitude < 3.2 then
                     return true
                 end
@@ -150,7 +142,6 @@ function SmartDoor.IrPara(destino, escopo_portas)
         end
         return true
     else
-        -- Fallback de emergência em linha reta
         local dir = (hrp.Position - flatTarget).Unit
         local walkPos = flatTarget + (dir * 2.8)
         hum:MoveTo(walkPos)
@@ -165,5 +156,4 @@ function SmartDoor.IrPara(destino, escopo_portas)
     end
 end
 
--- EXPORTA PARA O _G (Resolve definitivamente o problema de Nil do Delta)
-_G.SmartDoor = SmartDoor
+return SmartDoor
