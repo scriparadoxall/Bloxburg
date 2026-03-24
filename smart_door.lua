@@ -3,44 +3,25 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local Players = game:GetService("Players")
 
 local SmartDoor = {} 
-SmartDoor.CurrentWalkId = 0 -- O segredo para não bugar as rotas!
+SmartDoor.CurrentWalkId = 0
 local lastDoorClick = 0
 
--- Função para matar a caminhada na hora que você apertar "Parar Farm"
 function SmartDoor.Cancelar()
     SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
 end
 
+-- Busca otimizada mas SEGURA: Vai olhar todas as portas da casa pra não perder nenhuma!
 local function GetDoors(scope)
     local doors = {}
     local searchArea = scope or workspace
-
-    if searchArea:FindFirstChild("House") then
-        local house = searchArea.House
-        if house:FindFirstChild("Walls") then
-            for _, wall in pairs(house.Walls:GetChildren()) do
-                if wall:FindFirstChild("ItemHolder") then
-                    for _, item in pairs(wall.ItemHolder:GetChildren()) do
-                        local name = string.lower(item.Name)
-                        if string.match(name, "door") or string.match(name, "porta") then
-                            table.insert(doors, item)
-                        end
-                    end
-                end
-            end
-        end
-        if house:FindFirstChild("Doors") then
-            for _, door in pairs(house.Doors:GetChildren()) do
-                table.insert(doors, door)
-            end
-        end
-    else
-        for _, obj in pairs(searchArea:GetDescendants()) do
-            if obj:IsA("Model") then
-                local name = string.lower(obj.Name)
-                if string.match(name, "door") or string.match(name, "porta") then
-                    table.insert(doors, obj)
-                end
+    
+    local alvo = searchArea:FindFirstChild("House") or searchArea
+    
+    for _, obj in pairs(alvo:GetDescendants()) do
+        if obj:IsA("Model") then
+            local name = string.lower(obj.Name)
+            if string.match(name, "door") or string.match(name, "porta") then
+                table.insert(doors, obj)
             end
         end
     end
@@ -85,7 +66,7 @@ end
 
 function SmartDoor.IrPara(destino, escopo_portas)
     SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
-    local myWalkId = SmartDoor.CurrentWalkId -- Grava a identidade dessa caminhada
+    local myWalkId = SmartDoor.CurrentWalkId
 
     local player = Players.LocalPlayer
     local char = player.Character
@@ -102,6 +83,11 @@ function SmartDoor.IrPara(destino, escopo_portas)
     if typeof(destino) == "Instance" then
         targetPos = destino:IsA("Model") and destino:GetPivot().Position or destino.Position
 
+        if destino:IsA("BasePart") then
+            table.insert(targetParts, {part = destino, coll = destino.CanCollide})
+            destino.CanCollide = false
+        end
+
         for _, part in pairs(destino:GetDescendants()) do
             if part:IsA("BasePart") then
                 table.insert(targetParts, {part = part, coll = part.CanCollide})
@@ -115,6 +101,14 @@ function SmartDoor.IrPara(destino, escopo_portas)
     end
 
     local flatTarget = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)
+    
+    -- Impede erros matemáticos se o boneco estiver exatamente no mesmo pixel que o alvo
+    local dir = (hrp.Position - flatTarget)
+    if dir.Magnitude < 0.1 then dir = Vector3.new(0, 0, 1) else dir = dir.Unit end
+    
+    -- MÁGICA: Em vez de calcular pro meio da geladeira, calcula para o CHÃO LIVRE na frente dela!
+    local walkPos = flatTarget + (dir * 2.5) 
+
     local doors = GetDoors(escopo_portas)
     local doorParts = {}
 
@@ -134,8 +128,8 @@ function SmartDoor.IrPara(destino, escopo_portas)
         AgentMaxSlope = 45,
     })
 
-    -- Sempre calcula baseado na posição atual EXATA do boneco
-    local success, err = pcall(function() path:ComputeAsync(hrp.Position, flatTarget) end)
+    -- Calcula a rota para o espaço vazio
+    local success, err = pcall(function() path:ComputeAsync(hrp.Position, walkPos) end)
 
     for _, data in pairs(doorParts) do if data.part then data.part.CanCollide = data.coll end end
     for _, data in pairs(targetParts) do if data.part then data.part.CanCollide = data.coll end end
@@ -144,7 +138,7 @@ function SmartDoor.IrPara(destino, escopo_portas)
         local waypoints = path:GetWaypoints()
 
         for i, wp in ipairs(waypoints) do
-            if SmartDoor.CurrentWalkId ~= myWalkId then return false end -- Se o farm foi desligado, mata a rota!
+            if SmartDoor.CurrentWalkId ~= myWalkId then return false end
 
             if i == 1 and (hrp.Position - wp.Position).Magnitude < 3 then
                 continue
@@ -155,9 +149,9 @@ function SmartDoor.IrPara(destino, escopo_portas)
             local tempoInicio = tick()
 
             while (hrp.Position - wp.Position).Magnitude > 3.5 do
-                if SmartDoor.CurrentWalkId ~= myWalkId then return false end -- Mata a rota se foi desligado!
+                if SmartDoor.CurrentWalkId ~= myWalkId then return false end
                 
-                hum:MoveTo(wp.Position) -- Força o boneco a não perder o foco
+                hum:MoveTo(wp.Position)
                 OpenNearbyDoors(hrp, doors) 
 
                 if tick() - tempoInicio > 2 then 
@@ -174,13 +168,10 @@ function SmartDoor.IrPara(destino, escopo_portas)
         end
         return true
     else
-        local dir = (hrp.Position - flatTarget).Unit
-        local walkPos = flatTarget + (dir * 2.8)
-        
+        -- Fallback
         local tempoInicio = tick()
         while (hrp.Position - walkPos).Magnitude > 1.5 do
             if SmartDoor.CurrentWalkId ~= myWalkId then return false end
-            
             hum:MoveTo(walkPos)
             OpenNearbyDoors(hrp, doors)
             if tick() - tempoInicio > 5 then hum.Jump = true; break end
