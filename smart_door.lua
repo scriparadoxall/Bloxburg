@@ -3,7 +3,13 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local Players = game:GetService("Players")
 
 local SmartDoor = {} 
+SmartDoor.CurrentWalkId = 0 -- O segredo para não bugar as rotas!
 local lastDoorClick = 0
+
+-- Função para matar a caminhada na hora que você apertar "Parar Farm"
+function SmartDoor.Cancelar()
+    SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
+end
 
 local function GetDoors(scope)
     local doors = {}
@@ -42,15 +48,12 @@ local function GetDoors(scope)
 end
 
 local function OpenNearbyDoors(hrp, doors)
-    -- Cooldown reduzido de 2.5s para 1s, pois agora ele é mais inteligente e não erra
     if tick() - lastDoorClick < 1 then return end 
     
     for _, door in pairs(doors) do
         if door and door.Parent then
             local dist = (hrp.Position - door:GetPivot().Position).Magnitude
             if dist < 6.5 then 
-                
-                -- Checa a UI para ver se a porta está aberta ou fechada
                 local PlayerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
                 if PlayerGui then
                     local interactUI = PlayerGui:FindFirstChild("_interactUI")
@@ -61,8 +64,6 @@ local function OpenNearbyDoors(hrp, doors)
                         
                         if textLabel and textLabel.Text ~= "" then
                             local txt = string.lower(textLabel.Text)
-                            
-                            -- Se disser "Open" ou "Abrir", ele aperta E
                             if string.find(txt, "open") or string.find(txt, "abrir") then
                                 lastDoorClick = tick()
                                 task.spawn(function()
@@ -71,8 +72,6 @@ local function OpenNearbyDoors(hrp, doors)
                                     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
                                 end)
                                 break 
-                                
-                            -- Se disser "Close" ou "Fechar", ele passa reto
                             elseif string.find(txt, "close") or string.find(txt, "fechar") then
                                 break 
                             end
@@ -85,6 +84,9 @@ local function OpenNearbyDoors(hrp, doors)
 end
 
 function SmartDoor.IrPara(destino, escopo_portas)
+    SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
+    local myWalkId = SmartDoor.CurrentWalkId -- Grava a identidade dessa caminhada
+
     local player = Players.LocalPlayer
     local char = player.Character
     if not char or not char:FindFirstChild("Humanoid") or not char:FindFirstChild("HumanoidRootPart") then 
@@ -132,6 +134,7 @@ function SmartDoor.IrPara(destino, escopo_portas)
         AgentMaxSlope = 45,
     })
 
+    -- Sempre calcula baseado na posição atual EXATA do boneco
     local success, err = pcall(function() path:ComputeAsync(hrp.Position, flatTarget) end)
 
     for _, data in pairs(doorParts) do if data.part then data.part.CanCollide = data.coll end end
@@ -141,16 +144,20 @@ function SmartDoor.IrPara(destino, escopo_portas)
         local waypoints = path:GetWaypoints()
 
         for i, wp in ipairs(waypoints) do
+            if SmartDoor.CurrentWalkId ~= myWalkId then return false end -- Se o farm foi desligado, mata a rota!
+
             if i == 1 and (hrp.Position - wp.Position).Magnitude < 3 then
                 continue
             end
 
             if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
-            hum:MoveTo(wp.Position)
 
             local tempoInicio = tick()
 
             while (hrp.Position - wp.Position).Magnitude > 3.5 do
+                if SmartDoor.CurrentWalkId ~= myWalkId then return false end -- Mata a rota se foi desligado!
+                
+                hum:MoveTo(wp.Position) -- Força o boneco a não perder o foco
                 OpenNearbyDoors(hrp, doors) 
 
                 if tick() - tempoInicio > 2 then 
@@ -169,10 +176,12 @@ function SmartDoor.IrPara(destino, escopo_portas)
     else
         local dir = (hrp.Position - flatTarget).Unit
         local walkPos = flatTarget + (dir * 2.8)
-        hum:MoveTo(walkPos)
-
+        
         local tempoInicio = tick()
         while (hrp.Position - walkPos).Magnitude > 1.5 do
+            if SmartDoor.CurrentWalkId ~= myWalkId then return false end
+            
+            hum:MoveTo(walkPos)
             OpenNearbyDoors(hrp, doors)
             if tick() - tempoInicio > 5 then hum.Jump = true; break end
             task.wait()
