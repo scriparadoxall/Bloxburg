@@ -25,7 +25,6 @@ function SmartDoor.Cancelar()
     end)
 end
 
--- Pega todas as portas de todas as paredes do Plot
 local function GetDoors()
     local doors = {}
     local plots = workspace:FindFirstChild("Plots")
@@ -53,9 +52,9 @@ local function GetDoors()
     return doors
 end
 
--- Tenta interagir (apertar E). Retorna TRUE só se ele clicar em "Open"
 local function HandleDoorInteraction(hrp, doors)
-    if tick() - lastDoorClick < 1.5 then return false end 
+    -- Diminuí o cooldown para ele ser mais rápido no gatilho quando chegar perto
+    if tick() - lastDoorClick < 1.0 then return false end 
     
     local portaMaisPerto = nil
     local menorDistancia = 8 
@@ -83,7 +82,7 @@ local function HandleDoorInteraction(hrp, doors)
             if textLabel and textLabel.Text ~= "" then
                 local txt = string.lower(textLabel.Text)
                 if string.find(txt, "open") or string.find(txt, "abrir") then
-                    LogSD("🚪 Porta encontrada! Abrindo...")
+                    LogSD("🚪 UI de abrir apareceu! Apertando E...")
                     lastDoorClick = tick()
                     task.spawn(function()
                         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
@@ -132,7 +131,6 @@ function SmartDoor.IrPara(destino)
 
         local doors = GetDoors()
 
-        -- Tenta calcular a rota DIRETO pra geladeira (sem mexer em colisão)
         local path = PathfindingService:CreatePath({
             AgentRadius = 1.0, 
             AgentHeight = 4, 
@@ -143,7 +141,6 @@ function SmartDoor.IrPara(destino)
         local success, err = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
 
         if success and path.Status == Enum.PathStatus.Success then
-            -- CAMINHO LIVRE! Vai até a geladeira.
             local waypoints = path:GetWaypoints()
             LogSD("✅ Rota livre encontrada! Andando...")
             
@@ -165,7 +162,7 @@ function SmartDoor.IrPara(destino)
                     if HandleDoorInteraction(hrp, doors) then
                         LogSD("⏳ Abriu uma porta no meio do caminho! Recalculando...")
                         hum:MoveTo(hrp.Position)
-                        task.wait(1.2)
+                        task.wait(1.5)
                         precisouRecalcular = true
                         break
                     end
@@ -191,8 +188,7 @@ function SmartDoor.IrPara(destino)
             end
 
         else
-            -- COMO VOCÊ DISSE: A rota falhou. Tá trancado! Vamos achar a porta mais perto!
-            LogSD("🚨 Caminho bloqueado! Calculando rota até a porta mais próxima...")
+            LogSD("🚨 Caminho bloqueado! Achando a porta mais próxima...")
             
             local bestDoor = nil
             local bestDist = math.huge
@@ -212,7 +208,6 @@ function SmartDoor.IrPara(destino)
                 local doorPos = bestDoor:GetPivot().Position
                 LogSD("🚶 Indo até a porta pra destrancar...")
 
-                -- Agora ele calcula a rota SÓ ATÉ A PORTA!
                 local doorPath = PathfindingService:CreatePath({ AgentRadius = 1.0, AgentHeight = 4, AgentCanJump = true })
                 doorPath:ComputeAsync(hrp.Position, doorPos)
 
@@ -220,7 +215,6 @@ function SmartDoor.IrPara(destino)
                 if doorPath.Status == Enum.PathStatus.Success then
                     dWaypoints = doorPath:GetWaypoints()
                 else
-                    -- Se der erro até na porta, ele anda reto pra ela
                     table.insert(dWaypoints, {Position = doorPos, Action = Enum.PathWaypointAction.Walk})
                 end
 
@@ -236,12 +230,33 @@ function SmartDoor.IrPara(destino)
 
                     while (hrp.Position - wp.Position).Magnitude > 3 do
                         if SmartDoor.CurrentWalkId ~= myWalkId then return false end
+                        
+                        -- SISTEMA DE FREIO ANTI-BATIDA
+                        local distParaPorta = (hrp.Position - doorPos).Magnitude
+                        if distParaPorta < 4.5 then
+                            LogSD("🛑 Chegou a uma distância segura da porta. Parando...")
+                            hum:MoveTo(hrp.Position) -- Puxa o freio!
+                            
+                            -- Tenta apertar E algumas vezes enquanto está parado
+                            local tempoParado = tick()
+                            while tick() - tempoParado < 2 do
+                                if HandleDoorInteraction(hrp, doors) then
+                                    LogSD("✅ Apertou E! Esperando a porta abrir...")
+                                    task.wait(1.5)
+                                    abriuPorta = true
+                                    break
+                                end
+                                task.wait(0.1)
+                            end
+                            break -- Sai do loop de andar, já chegou na porta
+                        end
+
                         hum:MoveTo(wp.Position)
 
                         if HandleDoorInteraction(hrp, doors) then
-                            LogSD("✅ A porta abriu! Recalculando a rota pra geladeira...")
-                            hum:MoveTo(hrp.Position) -- Freia o boneco pra não bater
-                            task.wait(1.5) -- Espera a animação da porta no jogo abrir de verdade
+                            LogSD("✅ Apertou E no caminho! Esperando abrir...")
+                            hum:MoveTo(hrp.Position)
+                            task.wait(1.5) 
                             abriuPorta = true
                             break
                         end
@@ -255,7 +270,7 @@ function SmartDoor.IrPara(destino)
                         if tick() - tempoInicio > 4 then break end
                         task.wait()
                     end
-                    if abriuPorta then break end -- Volta pro loop principal (pra tentar ir pra geladeira de novo)
+                    if abriuPorta or (hrp.Position - doorPos).Magnitude < 4.5 then break end 
                 end
             else
                 LogSD("❌ Nenhuma porta encontrada! Tentando ir reto...")
