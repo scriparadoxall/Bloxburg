@@ -56,7 +56,6 @@ local function GetCurrentAction()
     return nil, nil
 end
 
--- Usa as funções de exploit pra forçar o clique na UI
 local function SafeClick(element)
     if not element then return false end
     local success = false
@@ -237,7 +236,6 @@ function _G.BloxburgChef.Start(food)
 
             local hasFood = false
 
-            -- TENTA PEGAR A COMIDA
             while isRunning and currentMacroId == myId and not hasFood do
                 local startActText, _ = GetCurrentAction()
                 if startActText then
@@ -257,12 +255,11 @@ function _G.BloxburgChef.Start(food)
 
                     local listMenu = nil
                     local waitTime = 0
-                    
-                    -- Espera o menu aparecer
+
                     while waitTime < 30 do
                         listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)")
                         if listMenu and listMenu.Visible then break end
-                        
+
                         local interactUI = PlayerGui:FindFirstChild("_interactUI")
                         if interactUI then
                             local center = interactUI:FindFirstChild("Center")
@@ -273,49 +270,40 @@ function _G.BloxburgChef.Start(food)
                                 task.wait(0.5)
                             end
                         end
-                        
+
                         task.wait(0.1)
                         waitTime = waitTime + 1
                     end
 
-                    -- NOVA LÓGICA DE CLICAR NO BOTÃO "TAKE" DIRETAMENTE
+                    -- INTERAÇÃO VIA EVENTO 
                     if listMenu and listMenu.Visible then
-                        Log("Menu aberto. Vasculhando a lista...", Color3.fromRGB(200, 200, 200))
-                        task.wait(0.8) -- Espera os itens renderizarem na tela
+                        Log("Menu aberto. Vasculhando a lista para disparar Evento...", Color3.fromRGB(200, 200, 200))
+                        task.wait(0.8) 
 
-                        local mainFrame = listMenu:FindFirstChild("Frame")
-                        local itemList = mainFrame and mainFrame:FindFirstChild("ItemList")
-
-                        if itemList then
-                            local pegou = false
-                            
-                            -- Lê cada linha da lista de ingredientes
-                            for _, row in pairs(itemList:GetChildren()) do
-                                if row:IsA("Frame") or row:IsA("ImageLabel") then
-                                    local nameFound = false
-                                    local takeBtn = nil
-                                    
-                                    for _, desc in pairs(row:GetDescendants()) do
-                                        -- Acha o texto com o nome da comida (ex: "Hot Dogs")
-                                        if desc:IsA("TextLabel") and string.find(string.lower(desc.Text), string.lower(selectedFood)) then
-                                            nameFound = true
-                                        end
+                        -- O caminho exato fornecido por você
+                        local uiEvent = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)") 
+                                        and PlayerGui["_ListFrame (T_Ingredients)"]:FindFirstChild("Frame") 
+                                        and PlayerGui["_ListFrame (T_Ingredients)"].Frame:FindFirstChild("Event")
                                         
-                                        -- Acha o botão de clicar (Botão Azul escrito "Take")
-                                        if desc:IsA("GuiButton") or desc:IsA("ImageButton") or desc:IsA("TextButton") then
-                                            local btnText = desc:FindFirstChildWhichIsA("TextLabel")
-                                            if btnText and string.find(string.lower(btnText.Text), "take") then
-                                                takeBtn = desc
-                                            elseif desc.Name == "Take" or desc.Name == "TakeButton" or desc.Name == "Button" then
-                                                takeBtn = desc
-                                            end
-                                        end
-                                    end
-                                    
-                                    -- Se achou a comida certa E o botão Take na mesma linha
-                                    if nameFound and takeBtn then
-                                        Log("ACHOU! Clicando no botão Take do(a) " .. selectedFood, Color3.fromRGB(50, 255, 50))
-                                        SafeClick(takeBtn)
+                        local itemList = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)")
+                                        and PlayerGui["_ListFrame (T_Ingredients)"]:FindFirstChild("Frame")
+                                        and PlayerGui["_ListFrame (T_Ingredients)"].Frame:FindFirstChild("ItemList")
+
+                        if uiEvent and itemList then
+                            local pegou = false
+
+                            for _, itemFrame in pairs(itemList:GetChildren()) do
+                                if itemFrame:IsA("Frame") or itemFrame:IsA("ImageLabel") then
+                                    local nameLabel = itemFrame:FindFirstChild("NameLabel", true) or itemFrame:FindFirstChild("TextLabel", true)
+
+                                    if nameLabel and string.find(string.lower(nameLabel.Text), string.lower(selectedFood)) then
+                                        Log("Disparando Evento para o item: " .. itemFrame.Name, Color3.fromRGB(50, 255, 50))
+                                        
+                                        -- Dispara com o Frame Name e Frame Object 
+                                        pcall(function() uiEvent:Fire(itemFrame.Name) end)
+                                        task.wait(0.1)
+                                        pcall(function() uiEvent:Fire(itemFrame) end)
+                                        
                                         pegou = true
                                         break
                                     end
@@ -323,12 +311,10 @@ function _G.BloxburgChef.Start(food)
                             end
 
                             if not pegou then
-                                Log("Comida não encontrada. Tentando forçar pelo nome...", Color3.fromRGB(255, 200, 100))
-                                local uiEvent = mainFrame and mainFrame:FindFirstChild("Event")
-                                if uiEvent then pcall(function() uiEvent:Fire(selectedFood) end) end
+                                Log("Item não achado visualmente. Atirando no escuro via Evento...", Color3.fromRGB(255, 200, 100))
+                                pcall(function() uiEvent:Fire(selectedFood) end)
                             end
-                            
-                            -- Checa se a comida realmente veio pra mão
+
                             local fridgeStartTime = tick()
                             while tick() - fridgeStartTime < 4 do
                                 if not isRunning or currentMacroId ~= myId then break end
@@ -341,6 +327,8 @@ function _G.BloxburgChef.Start(food)
                                 if hasFood then break end
                                 task.wait(0.2)
                             end
+                        else
+                            Log("Erro: O Evento ou ItemList não foi achado no caminho.", Color3.fromRGB(255, 50, 50))
                         end
                     else
                         Log("Geladeira não encontrada ou caminho bloqueado!", Color3.fromRGB(255, 50, 50))
@@ -351,7 +339,6 @@ function _G.BloxburgChef.Start(food)
 
             local cookingStatus = "cooking"
 
-            -- PROCESSO DE COZINHAR
             while isRunning and currentMacroId == myId and cookingStatus ~= "finished" and cookingStatus ~= "timeout" do
                 local actText, equippedBtn = GetCurrentAction()
 
@@ -373,7 +360,6 @@ function _G.BloxburgChef.Start(food)
                     if MoveToStation(targetName) then
                         task.wait(0.5)
 
-                        -- Limpa a bancada se estiver suja
                         local interactUI = PlayerGui:FindFirstChild("_interactUI")
                         if interactUI then
                             local center = interactUI:FindFirstChild("Center")
