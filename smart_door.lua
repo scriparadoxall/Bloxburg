@@ -53,46 +53,30 @@ local function GetDoors()
 end
 
 local function HandleDoorInteraction(hrp, doors)
-    -- Diminuí o cooldown para ele ser mais rápido no gatilho quando chegar perto
     if tick() - lastDoorClick < 1.0 then return false end 
     
-    local portaMaisPerto = nil
-    local menorDistancia = 8 
+    local PlayerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
+    if not PlayerGui then return false end
 
-    for _, door in pairs(doors) do
-        if door and door.Parent then
-            local dist = (hrp.Position - door:GetPivot().Position).Magnitude
-            if dist < menorDistancia then
-                menorDistancia = dist
-                portaMaisPerto = door
-            end
-        end
-    end
-
-    if portaMaisPerto then
-        local PlayerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
-        if not PlayerGui then return false end
-
-        local interactUI = PlayerGui:FindFirstChild("_interactUI")
-        if interactUI then
-            local center = interactUI:FindFirstChild("Center")
-            local button = center and center:FindFirstChild("Button")
-            local textLabel = button and button:FindFirstChild("TextLabel")
-            
-            if textLabel and textLabel.Text ~= "" then
-                local txt = string.lower(textLabel.Text)
-                if string.find(txt, "open") or string.find(txt, "abrir") then
-                    LogSD("🚪 UI de abrir apareceu! Apertando E...")
-                    lastDoorClick = tick()
-                    task.spawn(function()
-                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                        task.wait(0.1)
-                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-                    end)
-                    return true 
-                elseif string.find(txt, "close") or string.find(txt, "fechar") then
-                    return false
-                end
+    local interactUI = PlayerGui:FindFirstChild("_interactUI")
+    if interactUI then
+        local center = interactUI:FindFirstChild("Center")
+        local button = center and center:FindFirstChild("Button")
+        local textLabel = button and button:FindFirstChild("TextLabel")
+        
+        if textLabel and textLabel.Text ~= "" then
+            local txt = string.lower(textLabel.Text)
+            if string.find(txt, "open") or string.find(txt, "abrir") then
+                LogSD("🚪 UI de abrir detectada! Apertando E...")
+                lastDoorClick = tick()
+                task.spawn(function()
+                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                    task.wait(0.1)
+                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                end)
+                return true 
+            elseif string.find(txt, "close") or string.find(txt, "fechar") then
+                return false
             end
         end
     end
@@ -231,24 +215,45 @@ function SmartDoor.IrPara(destino)
                     while (hrp.Position - wp.Position).Magnitude > 3 do
                         if SmartDoor.CurrentWalkId ~= myWalkId then return false end
                         
-                        -- SISTEMA DE FREIO ANTI-BATIDA
                         local distParaPorta = (hrp.Position - doorPos).Magnitude
-                        if distParaPorta < 4.5 then
-                            LogSD("🛑 Chegou a uma distância segura da porta. Parando...")
-                            hum:MoveTo(hrp.Position) -- Puxa o freio!
+                        
+                        -- AUMENTADA A DISTÂNCIA DE FREIO PARA 6.5 (Bem mais longe da porta)
+                        if distParaPorta < 6.5 then
+                            LogSD("🛑 Distância segura atingida. Parando de frente pra porta...")
                             
-                            -- Tenta apertar E algumas vezes enquanto está parado
+                            -- Dá um passinho minúsculo em direção à porta só pra alinhar o corpo e ajudar a UI a aparecer
+                            hum:MoveTo(doorPos)
+                            task.wait(0.1)
+                            hum:MoveTo(hrp.Position) -- Puxa o freio de vez
+                            
+                            local apertouNaUI = false
                             local tempoParado = tick()
+                            
+                            -- Fica 2 segundos parado tentando ler a UI pra apertar E
                             while tick() - tempoParado < 2 do
                                 if HandleDoorInteraction(hrp, doors) then
-                                    LogSD("✅ Apertou E! Esperando a porta abrir...")
+                                    LogSD("✅ Apertou E pela UI! Esperando a porta abrir...")
                                     task.wait(1.5)
                                     abriuPorta = true
+                                    apertouNaUI = true
                                     break
                                 end
-                                task.wait(0.1)
+                                task.wait(0.2)
                             end
-                            break -- Sai do loop de andar, já chegou na porta
+                            
+                            -- SISTEMA DE FORÇA BRUTA: Se a UI não apareceu em 2 segundos, aperta E na marra!
+                            if not apertouNaUI then
+                                LogSD("⚠️ UI não apareceu. Forçando o E por segurança!")
+                                task.spawn(function()
+                                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                                    task.wait(0.1)
+                                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                                end)
+                                task.wait(1.5)
+                                abriuPorta = true
+                            end
+                            
+                            break -- Sai do loop de andar em direção à porta
                         end
 
                         hum:MoveTo(wp.Position)
@@ -270,7 +275,7 @@ function SmartDoor.IrPara(destino)
                         if tick() - tempoInicio > 4 then break end
                         task.wait()
                     end
-                    if abriuPorta or (hrp.Position - doorPos).Magnitude < 4.5 then break end 
+                    if abriuPorta or (hrp.Position - doorPos).Magnitude < 6.5 then break end 
                 end
             else
                 LogSD("❌ Nenhuma porta encontrada! Tentando ir reto...")
