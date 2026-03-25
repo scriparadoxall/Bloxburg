@@ -124,7 +124,7 @@ local function MoveToStation(name)
         return false
     end
 
-    local chegou_no_destino = _G.SmartDoor.IrPara(station, myPlot)
+    local chegou_no_destino = _G.SmartDoor.IrPara(station) -- Removido myPlot, o SmartDoor já procura sozinho
 
     if chegou_no_destino then
         local hrp = LocalPlayer.Character.HumanoidRootPart
@@ -236,6 +236,7 @@ function _G.BloxburgChef.Start(food)
 
             local hasFood = false
 
+            -- TENTA PEGAR A COMIDA
             while isRunning and currentMacroId == myId and not hasFood do
                 local startActText, _ = GetCurrentAction()
                 if startActText then
@@ -255,62 +256,84 @@ function _G.BloxburgChef.Start(food)
 
                     local listMenu = nil
                     local waitTime = 0
+                    
+                    -- Espera o menu aparecer
                     while waitTime < 30 do
-                        listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)", true)
+                        listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)")
                         if listMenu and listMenu.Visible then break end
+                        
+                        -- Se a UI principal não apareceu, clica no 'Take Ingredients'
+                        local interactUI = PlayerGui:FindFirstChild("_interactUI")
+                        if interactUI then
+                            local center = interactUI:FindFirstChild("Center")
+                            local btn = center and center:FindFirstChild("Button")
+                            local lbl = btn and btn:FindFirstChild("TextLabel")
+                            if lbl and (string.lower(lbl.Text):find("take") or string.lower(lbl.Text):find("pegar") or string.lower(lbl.Text):find("ingredients")) then
+                                SafeClick(btn)
+                                task.wait(0.5)
+                            end
+                        end
+                        
                         task.wait(0.1)
                         waitTime = waitTime + 1
                     end
 
-                    if not listMenu or not listMenu.Visible then
-                        local interactUI = PlayerGui:FindFirstChild("_interactUI")
-                        if interactUI then
-                            for _, el in pairs(interactUI:GetDescendants()) do
-                                if el:IsA("TextLabel") and (string.lower(el.Text):find("take") or string.lower(el.Text):find("pegar") or string.lower(el.Text):find("ingredients")) then
-                                    SafeClick(el.Parent)
-                                    break
-                                end
-                            end
-                        end
-                        task.wait(0.5)
-                        listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)", true)
-                    end
-
-                    if listMenu then
-                        Log("Menu aberto. Selecionando...", Color3.fromRGB(200, 200, 200))
-                        task.wait(1.5) 
+                    if listMenu and listMenu.Visible then
+                        Log("Menu aberto. Procurando " .. selectedFood .. "...", Color3.fromRGB(200, 200, 200))
+                        task.wait(0.5) -- Espera a lista carregar
 
                         local mainFrame = listMenu:FindFirstChild("Frame")
                         local uiEvent = mainFrame and mainFrame:FindFirstChild("Event")
-                        local foodBtn = listMenu:FindFirstChild(selectedFood .. "_Button", true)
+                        local itemList = mainFrame and mainFrame:FindFirstChild("ItemList")
 
-                        if not foodBtn then
-                            for _, v in pairs(listMenu:GetDescendants()) do
-                                if v:IsA("TextLabel") and string.find(string.lower(v.Text), string.lower(selectedFood)) then
-                                    if v.Parent:IsA("GuiButton") or v.Parent:IsA("ImageButton") then foodBtn = v.Parent; break
-                                    elseif v.Parent.Parent:IsA("GuiButton") then foodBtn = v.Parent.Parent; break end
+                        if uiEvent and itemList then
+                            local itemFound = false
+                            
+                            -- Procura o item correto dentro da ItemList
+                            for _, child in pairs(itemList:GetChildren()) do
+                                if child:IsA("Frame") or child:IsA("ImageButton") then
+                                    local nameLabel = child:FindFirstChild("NameLabel", true) or child:FindFirstChild("TextLabel", true)
+                                    
+                                    if nameLabel and string.find(string.lower(nameLabel.Text), string.lower(selectedFood)) then
+                                        Log("Encontrou o item! Disparando evento...", Color3.fromRGB(200, 255, 200))
+                                        
+                                        -- O Bloxburg normalmente espera o nome do item ou o próprio frame do item no evento
+                                        pcall(function() uiEvent:Fire(child.Name) end) 
+                                        task.wait(0.1)
+                                        pcall(function() uiEvent:Fire(child) end)
+                                        task.wait(0.1)
+                                        -- Tenta clicar no botão "Take" associado se o evento falhar
+                                        local takeBtn = child:FindFirstChild("TakeButton", true) or child:FindFirstChild("Button", true)
+                                        if takeBtn then SafeClick(takeBtn) end
+                                        
+                                        itemFound = true
+                                        break
+                                    end
                                 end
                             end
-                        end
 
-                        if uiEvent and foodBtn then
-                            pcall(function() uiEvent:Fire(foodBtn) end)
-                            task.wait(0.2)
-                            pcall(function() uiEvent:Fire(selectedFood) end)
-                        end
-                    end
-
-                    local fridgeStartTime = tick()
-                    while tick() - fridgeStartTime < 4 do
-                        if not isRunning or currentMacroId ~= myId then break end
-                        local actText, _ = GetCurrentAction()
-                        if actText then
-                            for _, vAct in pairs(validActions) do
-                                if string.find(actText, string.lower(vAct)) then hasFood = true; break end
+                            if not itemFound then
+                                Log("Item não encontrado na lista. Tentando pelo nome...", Color3.fromRGB(255, 200, 100))
+                                pcall(function() uiEvent:Fire(selectedFood) end)
                             end
+                            
+                            -- Espera fechar o menu e a comida aparecer na mão
+                            local fridgeStartTime = tick()
+                            while tick() - fridgeStartTime < 4 do
+                                if not isRunning or currentMacroId ~= myId then break end
+                                local actText, _ = GetCurrentAction()
+                                if actText then
+                                    for _, vAct in pairs(validActions) do
+                                        if string.find(actText, string.lower(vAct)) then hasFood = true; break end
+                                    end
+                                end
+                                if hasFood then break end
+                                task.wait(0.2)
+                            end
+                            
+                        else
+                            Log("Erro: Evento ou ItemList não encontrados na UI.", Color3.fromRGB(255, 100, 100))
                         end
-                        if hasFood then break end
-                        task.wait(0.1)
                     end
                 else
                     Log("Geladeira não encontrada ou caminho bloqueado!", Color3.fromRGB(255, 50, 50))
@@ -320,6 +343,7 @@ function _G.BloxburgChef.Start(food)
 
             local cookingStatus = "cooking"
 
+            -- PROCESSO DE COZINHAR
             while isRunning and currentMacroId == myId and cookingStatus ~= "finished" and cookingStatus ~= "timeout" do
                 local actText, equippedBtn = GetCurrentAction()
 
@@ -341,14 +365,16 @@ function _G.BloxburgChef.Start(food)
                     if MoveToStation(targetName) then
                         task.wait(0.5)
 
+                        -- Limpa a bancada se estiver suja
                         local interactUI = PlayerGui:FindFirstChild("_interactUI")
                         if interactUI then
-                            for _, el in pairs(interactUI:GetDescendants()) do
-                                if el:IsA("TextLabel") and (string.lower(el.Text) == "clean" or string.lower(el.Text) == "limpar") then
-                                    SafeClick(el.Parent)
-                                    task.wait(9)
-                                    break
-                                end
+                            local center = interactUI:FindFirstChild("Center")
+                            local btn = center and center:FindFirstChild("Button")
+                            local lbl = btn and btn:FindFirstChild("TextLabel")
+                            if lbl and (string.lower(lbl.Text) == "clean" or string.lower(lbl.Text) == "limpar") then
+                                Log("Limpando sujeira...", Color3.fromRGB(200, 200, 100))
+                                SafeClick(btn)
+                                task.wait(9)
                             end
                         end
 
@@ -365,15 +391,15 @@ end
 function _G.BloxburgChef.Stop()
     isRunning = false
     currentMacroId = currentMacroId + 1
-    
+
     if type(_G.SmartDoor) == "table" and type(_G.SmartDoor.Cancelar) == "function" then
         _G.SmartDoor.Cancelar()
     end
-    
+
     local player = game:GetService("Players").LocalPlayer
     if player.Character and player.Character:FindFirstChild("Humanoid") and player.Character:FindFirstChild("HumanoidRootPart") then
         player.Character.Humanoid:MoveTo(player.Character.HumanoidRootPart.Position)
     end
-    
+
     Log("Farm Parado.", Color3.fromRGB(255, 100, 100))
 end
