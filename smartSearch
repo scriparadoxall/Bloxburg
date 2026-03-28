@@ -4,7 +4,10 @@ local PathfindingService = game:GetService("PathfindingService")
 local LocalPlayer = Players.LocalPlayer
 local StationFinder = {}
 
-local function DeixarPortasFantasmas()
+-- ==========================================
+-- 🚪 GERENCIAMENTO DOS FANTASMAS
+-- ==========================================
+local function AlterarFantasmas(estado)
     local plots = workspace:FindFirstChild("Plots")
     if not plots then return end
 
@@ -16,11 +19,18 @@ local function DeixarPortasFantasmas()
                     local nomePai = obj.Parent and string.lower(obj.Parent.Name) or ""
                     
                     if string.find(nome, "door") or string.find(nomePai, "door") then
-                        if not obj:FindFirstChild("IgnorarNoGPS") then
-                            local modifier = Instance.new("PathfindingModifier")
-                            modifier.Name = "IgnorarNoGPS"
-                            modifier.PassThrough = true
-                            modifier.Parent = obj
+                        if estado == "LIGAR" then
+                            -- Cria o fantasma para o GPS calcular
+                            if not obj:FindFirstChild("IgnorarNoGPS") then
+                                local modifier = Instance.new("PathfindingModifier")
+                                modifier.Name = "IgnorarNoGPS"
+                                modifier.PassThrough = true
+                                modifier.Parent = obj
+                            end
+                        elseif estado == "DESLIGAR" then
+                            -- Destrói o fantasma pro smart_door bater de frente
+                            local fantasma = obj:FindFirstChild("IgnorarNoGPS")
+                            if fantasma then fantasma:Destroy() end
                         end
                     end
                 end
@@ -73,10 +83,14 @@ local function GetInteractionPart(obj)
 end
 
 function StationFinder.Find(stationType)
-    DeixarPortasFantasmas()
+    -- LIGA os fantasmas: "GPS, ignore as portas pra eu achar a melhor rota teórica!"
+    AlterarFantasmas("LIGAR")
     
     local character = LocalPlayer.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") then return nil, nil, math.huge end
+    if not character or not character:FindFirstChild("HumanoidRootPart") then 
+        AlterarFantasmas("DESLIGAR")
+        return nil, nil, math.huge 
+    end
     local myPos = character.HumanoidRootPart.Position
 
     local nearestObject = nil
@@ -84,7 +98,10 @@ function StationFinder.Find(stationType)
     local shortestWalkingDist = math.huge
 
     local plots = workspace:FindFirstChild("Plots")
-    if not plots then return nil, nil, math.huge end
+    if not plots then 
+        AlterarFantasmas("DESLIGAR")
+        return nil, nil, math.huge 
+    end
 
     for _, plot in pairs(plots:GetChildren()) do
         if plot:FindFirstChild("House") and plot.House:FindFirstChild("Counters") then
@@ -119,6 +136,9 @@ function StationFinder.Find(stationType)
             end
         end
     end
+
+    -- DESLIGA os fantasmas: Deixa o mundo sólido de novo para o smart_door lidar
+    AlterarFantasmas("DESLIGAR")
 
     return nearestObject, nearestPart, shortestWalkingDist
 end
