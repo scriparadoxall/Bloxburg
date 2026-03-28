@@ -12,6 +12,9 @@ local isRunning = false
 local currentMacroId = 0
 local selectedFood = "Hot Dogs"
 
+-- Variável para guardar o módulo do GitHub e não precisar baixar toda hora
+local smartSearchCache = nil
+
 local validActions = {
     "fry", "bake", "cook", "prepare", "stir", "mix", "chop", 
     "cut", "pour", "form", "garnish", "boil", "add", "blend",
@@ -72,56 +75,6 @@ local function SafeClick(element)
     return success
 end
 
-local function GetMyOwnPlot()
-    local plots = workspace:FindFirstChild("Plots")
-    if not plots then return nil end
-    for _, plot in pairs(plots:GetChildren()) do
-        if plot:FindFirstChild("Occupant") and plot.Occupant.Value == LocalPlayer.Name then return plot
-        elseif string.find(plot.Name, LocalPlayer.Name) then return plot end
-    end
-    for _, plot in pairs(plots:GetChildren()) do
-        if plot:FindFirstChild("House") then
-            local pPos = plot:GetPivot().Position
-            local charPos = LocalPlayer.Character.HumanoidRootPart.Position
-            if (Vector3.new(pPos.X, 0, pPos.Z) - Vector3.new(charPos.X, 0, charPos.Z)).Magnitude < 50 then return plot end
-        end
-    end
-    return nil
-end
-
--- =========================================================================
--- NOVA BUSCA INTELIGENTE DE ESTAÇÕES (Ignora nomes exatos, foca na função)
--- =========================================================================
-local function FindMyStation(stationType)
-    local myPlot = GetMyOwnPlot()
-    if not myPlot then return nil end
-    local countersFolder = myPlot:FindFirstChild("House") and myPlot.House:FindFirstChild("Counters")
-    if not countersFolder then return nil end
-
-    local target, shortestDist = nil, math.huge
-    for _, obj in pairs(countersFolder:GetChildren()) do
-        local objName = string.lower(obj.Name)
-        local match = false
-        
-        -- Se estiver procurando fogão, aceita qualquer coisa com Stove ou Oven
-        if stationType == "stove" and (string.find(objName, "stove") or string.find(objName, "oven")) then
-            match = true
-        -- Se estiver procurando balcão, aceita Counter ou Island
-        elseif stationType == "counter" and (string.find(objName, "counter") or string.find(objName, "island")) then
-            match = true
-        -- Se estiver procurando geladeira, aceita Fridge ou Refrigerator
-        elseif stationType == "fridge" and (string.find(objName, "fridge") or string.find(objName, "refrigerator")) then
-            match = true
-        end
-
-        if match then
-            local d = (LocalPlayer.Character.HumanoidRootPart.Position - obj:GetPivot().Position).Magnitude
-            if d < shortestDist then shortestDist = d; target = obj end
-        end
-    end
-    return target
-end
-
 local function AimAtObject(obj)
     local targetPos = obj:GetPivot().Position
     local lookTarget = targetPos + Vector3.new(0, -0.5, 0) 
@@ -130,10 +83,36 @@ local function AimAtObject(obj)
     task.wait(0.5)
 end
 
+-- =========================================================================
+-- NOVA LÓGICA DE MOVIMENTO USANDO O GITHUB (smartSearch)
+-- =========================================================================
+local function GetSmartSearch()
+    if smartSearchCache then return smartSearchCache end
+    
+    local success, result = pcall(function()
+        local moduleUrl = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/smartSearch"
+        return loadstring(game:HttpGet(moduleUrl))()
+    end)
+    
+    if success and result and type(result.Find) == "function" then
+        smartSearchCache = result
+        return smartSearchCache
+    end
+    return nil
+end
+
 local function MoveToStation(stationType)
-    local station = FindMyStation(stationType)
-    if not station then 
-        Log("ERRO: Nenhuma estação do tipo '" .. stationType .. "' encontrada na casa!", Color3.fromRGB(255, 100, 100))
+    local searcher = GetSmartSearch()
+    
+    if not searcher then 
+        Log("ERRO: Falha ao carregar o módulo smartSearch do GitHub!", Color3.fromRGB(255, 50, 50))
+        return false 
+    end
+
+    local obj, part, dist = searcher.Find(stationType)
+    
+    if not obj or not part then 
+        Log("ERRO: Nenhuma estação do tipo '" .. stationType .. "' encontrada acessível!", Color3.fromRGB(255, 100, 100))
         return false 
     end
 
@@ -142,14 +121,15 @@ local function MoveToStation(stationType)
         return false
     end
 
-    local chegou_no_destino = _G.SmartDoor.IrPara(station)
+    -- Manda o bot andar exatamente para a porta encontrada pelo smartSearch
+    local chegou_no_destino = _G.SmartDoor.IrPara(part)
 
     if chegou_no_destino then
         local hrp = LocalPlayer.Character.HumanoidRootPart
-        local targetPos = station:GetPivot().Position
+        local targetPos = part.Position
 
         hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
-        AimAtObject(station)
+        AimAtObject(obj) -- Mira na estrutura geral
 
         task.wait(0.2)
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
@@ -268,7 +248,6 @@ function _G.BloxburgChef.Start(food)
 
                 if hasFood then break end
 
-                -- Agora passamos apenas "fridge" e o bot se vira para achar qualquer geladeira
                 if MoveToStation("fridge") then
                     Log("Chegou na geladeira. Aguardando UI...", Color3.fromRGB(200, 200, 200))
 
@@ -350,17 +329,11 @@ function _G.BloxburgChef.Start(food)
                     end
                     if cookingStatus == "finished" then break end
 
-                    -- =========================================================
-                    -- NOVA LÓGICA: LÊ A AÇÃO E DECIDE SE VAI PRO FOGÃO OU BALCÃO
-                    -- =========================================================
                     local isStove = string.find(actText, "fry") or string.find(actText, "boil") or string.find(actText, "cook") or string.find(actText, "bake") or string.find(actText, "fritar") or string.find(actText, "ferver") or string.find(actText, "cozinhar") or string.find(actText, "assar")
-                    
-                    -- Se a ação pedir fogo (isStove for true), ele vai pro fogão. Se não, vai pro balcão.
                     local targetStationType = isStove and "stove" or "counter"
 
                     Log("Ação '" .. actText .. "' detectada. Indo para " .. targetStationType .. "...", Color3.fromRGB(150, 200, 255))
 
-                    -- Manda o bot andar pro destino inteligente (stove ou counter)
                     if MoveToStation(targetStationType) then
                         task.wait(0.5)
 
