@@ -258,7 +258,8 @@ function _G.BloxburgChef.Start(food)
 
                     while waitTime < 30 do
                         listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)")
-                        if listMenu and listMenu.Visible then break end
+                        -- Nota: Corrigido de .Visible para .Enabled aqui também para evitar erros!
+                        if listMenu and listMenu.Enabled then break end
 
                         local interactUI = PlayerGui:FindFirstChild("_interactUI")
                         if interactUI then
@@ -275,57 +276,25 @@ function _G.BloxburgChef.Start(food)
                         waitTime = waitTime + 1
                     end
 
-                    -- NOVA LÓGICA DE INTERAÇÃO (SISTEMA DE RADAR DE TEXTO)
-                    if listMenu and listMenu.Visible then
-                        Log("Menu aberto. Vasculhando a tela toda por " .. selectedFood .. "...", Color3.fromRGB(200, 200, 200))
-                        task.wait(0.8) 
+                    -- CHAMADA DO MÓDULO EXTERNO NO GITHUB
+                    if listMenu and listMenu.Enabled then
+                        Log("Menu aberto. Chamando módulo externo para pegar: " .. selectedFood, Color3.fromRGB(200, 200, 200))
+                        task.wait(0.5) 
 
-                        local pegou = false
-                        local uiEvent = listMenu:FindFirstChild("Frame") and listMenu.Frame:FindFirstChild("Event")
-
-                        -- Varre TODOS os elementos dentro do menu, ignorando a estrutura de pastas
-                        for _, desc in pairs(listMenu:GetDescendants()) do
-                            if desc:IsA("TextLabel") and desc.Text ~= "" then
-                                if string.find(string.lower(desc.Text), string.lower(selectedFood)) then
-                                    Log("Achei o nome: " .. desc.Text, Color3.fromRGB(50, 255, 50))
-                                    
-                                    -- Sobe um nível para pegar a "linha" inteira e procura o botão nela
-                                    local parentFrame = desc.Parent
-                                    local takeBtn = nil
-
-                                    if parentFrame then
-                                        -- Procura o botão azul "Take" que está do lado do nome
-                                        takeBtn = parentFrame:FindFirstChildWhichIsA("TextButton", true) or parentFrame:FindFirstChildWhichIsA("ImageButton", true)
-                                        
-                                        -- Se não achou, sobe mais um nível (às vezes tem uma pasta a mais)
-                                        if not takeBtn and parentFrame.Parent then
-                                            takeBtn = parentFrame.Parent:FindFirstChildWhichIsA("TextButton", true) or parentFrame.Parent:FindFirstChildWhichIsA("ImageButton", true)
-                                        end
-                                    end
-
-                                    if takeBtn then
-                                        Log("Botão Take encontrado! Clicando...", Color3.fromRGB(50, 255, 50))
-                                        SafeClick(takeBtn)
-                                        pegou = true
-                                        
-                                        -- Dispara o evento por garantia, caso o clique físico falhe
-                                        if uiEvent then
-                                            pcall(function() uiEvent:Fire({Name = desc.Text}) end)
-                                        end
-                                        break
-                                    end
+                        -- Executa o código hospedado no repositório cru (raw)
+                        pcall(function()
+                            local moduleUrl = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/food_utils/Ingredients"
+                            local getScript = loadstring(game:HttpGet(moduleUrl))
+                            
+                            if getScript then
+                                local foodModule = getScript()
+                                if type(foodModule) == "table" and type(foodModule.Pegar) == "function" then
+                                    foodModule.Pegar(selectedFood)
+                                else
+                                    Log("Aviso: O módulo GitHub não retornou a tabela correta. Faltou 'return food_select'?", Color3.fromRGB(255, 100, 100))
                                 end
                             end
-                        end
-
-                        -- Fallback: Se mesmo com o radar ele não achou (ex: se o texto for muito diferente)
-                        if not pegou then
-                            Log("Item não achado visualmente. Disparando Evento cego...", Color3.fromRGB(255, 200, 100))
-                            if uiEvent then
-                                pcall(function() uiEvent:Fire({Name = selectedFood}) end)
-                                pcall(function() uiEvent:Fire(selectedFood) end)
-                            end
-                        end
+                        end)
 
                         local fridgeStartTime = tick()
                         while tick() - fridgeStartTime < 4 do
