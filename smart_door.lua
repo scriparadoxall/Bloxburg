@@ -151,7 +151,7 @@ function SmartDoor.IrPara(destino)
         if typeof(destino) == "Instance" then TransformarAlvoEmFantasma(destino, "LIGAR") end
 
         local path = PathfindingService:CreatePath({
-            AgentRadius = 0.8, -- Fino para passar nas portas sem medo
+            AgentRadius = 0.8, 
             AgentHeight = 5, 
             AgentCanJump = true, 
             WaypointSpacing = 3 
@@ -162,14 +162,13 @@ function SmartDoor.IrPara(destino)
         AlterarFantasmas("DESLIGAR")
         if typeof(destino) == "Instance" then TransformarAlvoEmFantasma(destino, "DESLIGAR") end
 
-        -- Se a rota teve sucesso OU chegou no status "Closest" (O mais perto possível do fogão)
-        if success and (path.Status == Enum.PathStatus.Success or path.Status == Enum.PathStatus.Closest) then
+        -- CORREÇÃO: Mudado de Closest para ClosestNoPath
+        if success and (path.Status == Enum.PathStatus.Success or path.Status == Enum.PathStatus.ClosestNoPath) then
             local waypoints = path:GetWaypoints()
             local limiteDePassos = #waypoints
 
-            -- A SUA IDEIA: "PEGA UM ATRÁS"
-            -- Se ele identificou que o alvo é sólido (Closest) e tem mais de 1 passo, a gente apaga o último passo que estaria dentro do móvel!
-            if path.Status == Enum.PathStatus.Closest and limiteDePassos > 1 then
+            -- CORREÇÃO: Mudado de Closest para ClosestNoPath
+            if path.Status == Enum.PathStatus.ClosestNoPath and limiteDePassos > 1 then
                 limiteDePassos = limiteDePassos - 1
                 LogSD("⚠️ Alvo é sólido. Parando um passo atrás do móvel para não bugar!")
             end
@@ -177,7 +176,6 @@ function SmartDoor.IrPara(destino)
             LogSD("✅ Rota segura encontrada! Andando...")
             local precisouRecalcular = false
 
-            -- Só vai andar até o "limiteDePassos" (um atrás)
             for i = 1, limiteDePassos do
                 if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
                 local wp = waypoints[i]
@@ -215,7 +213,6 @@ function SmartDoor.IrPara(destino)
             end
 
             if not precisouRecalcular then
-                -- Checagem de distância mais generosa já que ele parou "um passo atrás"
                 if (hrp.Position - targetPos).Magnitude < 7 then
                     LogSD("🎯 Destino alcançado com sucesso!")
                     return true
@@ -226,7 +223,7 @@ function SmartDoor.IrPara(destino)
 
         else
             LogSD("🚨 Caminho bloqueado pelo labirinto de paredes! Tentando dnv...")
-            task.wait(1) -- Espera um pouco antes de tentar a próxima pra não dar lag
+            task.wait(1) 
         end
     end
 
