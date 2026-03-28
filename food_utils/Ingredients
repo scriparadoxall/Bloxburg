@@ -1,0 +1,80 @@
+local Players = game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
+local LocalPlayer = Players.LocalPlayer
+
+local food_select = {}
+local defaultFood = "Hot Dogs"
+
+local function ForceClick(element)
+    if not element then return false end
+    local clicked = false
+
+    pcall(function()
+        if getconnections then
+            if element.MouseButton1Click then 
+                for _, conn in pairs(getconnections(element.MouseButton1Click)) do conn:Fire(); clicked = true end 
+            end
+            if not clicked and element.Activated then 
+                for _, conn in pairs(getconnections(element.Activated)) do conn:Fire(); clicked = true end 
+            end
+        end
+    end)
+
+    if clicked then return true end
+
+    pcall(function()
+        local absPos = element.AbsolutePosition
+        local absSize = element.AbsoluteSize
+        local x = absPos.X + (absSize.X / 2)
+        local y = absPos.Y + (absSize.Y / 2)
+        local inset = GuiService:GetGuiInset()
+
+        VirtualInputManager:SendMouseButtonEvent(x, y + inset.Y, 0, true, game, 1)
+        task.wait(0.05)
+        VirtualInputManager:SendMouseButtonEvent(x, y + inset.Y, 0, false, game, 1)
+        clicked = true
+    end)
+    
+    return clicked
+end
+
+function food_select.Pegar(foodName)
+    foodName = foodName or defaultFood
+    local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+    
+    local listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)")
+    if not listMenu or not listMenu.Enabled then return false end
+
+    local scrollFrame = listMenu:FindFirstChild("Frame")
+                        and listMenu.Frame:FindFirstChild("ItemList")
+                        and listMenu.Frame.ItemList:FindFirstChild("ScrollFrame")
+
+    if not scrollFrame then return false end
+
+    local buttonName = foodName .. "_Button"
+    local foodRow = scrollFrame:FindFirstChild(buttonName)
+
+    if foodRow then
+        local takeBtn = nil
+        
+        for _, child in pairs(foodRow:GetDescendants()) do
+            if child:IsA("TextButton") or child:IsA("ImageButton") then
+                local txtLabel = child:FindFirstChildWhichIsA("TextLabel")
+                if (txtLabel and (txtLabel.Text == "Take" or txtLabel.Text == "Pegar")) or child.Name == "Take" or child.Name == "Button" then
+                    takeBtn = child
+                    break
+                end
+            end
+        end
+        
+        if not takeBtn then
+            takeBtn = foodRow:FindFirstChildWhichIsA("TextButton", true) or foodRow:FindFirstChildWhichIsA("ImageButton", true) or foodRow
+        end
+
+        local sucesso = ForceClick(takeBtn)
+        if sucesso then return true end
+    else
+        return false
+    end
+end
