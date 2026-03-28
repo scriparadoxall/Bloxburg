@@ -89,7 +89,10 @@ local function GetMyOwnPlot()
     return nil
 end
 
-local function FindMyStation(stationName)
+-- =========================================================================
+-- NOVA BUSCA INTELIGENTE DE ESTAÇÕES (Ignora nomes exatos, foca na função)
+-- =========================================================================
+local function FindMyStation(stationType)
     local myPlot = GetMyOwnPlot()
     if not myPlot then return nil end
     local countersFolder = myPlot:FindFirstChild("House") and myPlot.House:FindFirstChild("Counters")
@@ -97,7 +100,21 @@ local function FindMyStation(stationName)
 
     local target, shortestDist = nil, math.huge
     for _, obj in pairs(countersFolder:GetChildren()) do
-        if obj.Name == stationName then
+        local objName = string.lower(obj.Name)
+        local match = false
+        
+        -- Se estiver procurando fogão, aceita qualquer coisa com Stove ou Oven
+        if stationType == "stove" and (string.find(objName, "stove") or string.find(objName, "oven")) then
+            match = true
+        -- Se estiver procurando balcão, aceita Counter ou Island
+        elseif stationType == "counter" and (string.find(objName, "counter") or string.find(objName, "island")) then
+            match = true
+        -- Se estiver procurando geladeira, aceita Fridge ou Refrigerator
+        elseif stationType == "fridge" and (string.find(objName, "fridge") or string.find(objName, "refrigerator")) then
+            match = true
+        end
+
+        if match then
             local d = (LocalPlayer.Character.HumanoidRootPart.Position - obj:GetPivot().Position).Magnitude
             if d < shortestDist then shortestDist = d; target = obj end
         end
@@ -113,11 +130,12 @@ local function AimAtObject(obj)
     task.wait(0.5)
 end
 
-local function MoveToStation(name)
-    local station = FindMyStation(name)
-    if not station then return false end
-
-    local myPlot = GetMyOwnPlot()
+local function MoveToStation(stationType)
+    local station = FindMyStation(stationType)
+    if not station then 
+        Log("ERRO: Nenhuma estação do tipo '" .. stationType .. "' encontrada na casa!", Color3.fromRGB(255, 100, 100))
+        return false 
+    end
 
     if type(_G.SmartDoor) ~= "table" or type(_G.SmartDoor.IrPara) ~= "function" then
         Log("ERRO: Módulo SmartDoor não encontrado! Execute o Hub.", Color3.fromRGB(255, 50, 50))
@@ -250,7 +268,8 @@ function _G.BloxburgChef.Start(food)
 
                 if hasFood then break end
 
-                if MoveToStation("Icebox Fridge") then
+                -- Agora passamos apenas "fridge" e o bot se vira para achar qualquer geladeira
+                if MoveToStation("fridge") then
                     Log("Chegou na geladeira. Aguardando UI...", Color3.fromRGB(200, 200, 200))
 
                     local listMenu = nil
@@ -258,7 +277,6 @@ function _G.BloxburgChef.Start(food)
 
                     while waitTime < 30 do
                         listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)")
-                        -- Nota: Corrigido de .Visible para .Enabled aqui também para evitar erros!
                         if listMenu and listMenu.Enabled then break end
 
                         local interactUI = PlayerGui:FindFirstChild("_interactUI")
@@ -276,22 +294,20 @@ function _G.BloxburgChef.Start(food)
                         waitTime = waitTime + 1
                     end
 
-                    -- CHAMADA DO MÓDULO EXTERNO NO GITHUB
                     if listMenu and listMenu.Enabled then
                         Log("Menu aberto. Chamando módulo externo para pegar: " .. selectedFood, Color3.fromRGB(200, 200, 200))
                         task.wait(0.5) 
 
-                        -- Executa o código hospedado no repositório cru (raw)
                         pcall(function()
                             local moduleUrl = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/food_utils/Ingredients"
                             local getScript = loadstring(game:HttpGet(moduleUrl))
-                            
+
                             if getScript then
                                 local foodModule = getScript()
                                 if type(foodModule) == "table" and type(foodModule.Pegar) == "function" then
                                     foodModule.Pegar(selectedFood)
                                 else
-                                    Log("Aviso: O módulo GitHub não retornou a tabela correta. Faltou 'return food_select'?", Color3.fromRGB(255, 100, 100))
+                                    Log("Aviso: Módulo falhou.", Color3.fromRGB(255, 100, 100))
                                 end
                             end
                         end)
@@ -306,7 +322,6 @@ function _G.BloxburgChef.Start(food)
                                 end
                             end
                             if hasFood then 
-                                -- Tenta fechar o menu caso tenha ficado aberto (clicando no botão X)
                                 local closeBtn = listMenu:FindFirstChild("Close", true) or listMenu:FindFirstChildWhichIsA("ImageButton")
                                 if closeBtn then SafeClick(closeBtn) end
                                 break 
@@ -314,7 +329,7 @@ function _G.BloxburgChef.Start(food)
                             task.wait(0.2)
                         end
                     else
-                        Log("Geladeira não encontrada ou caminho bloqueado!", Color3.fromRGB(255, 50, 50))
+                        Log("Geladeira não encontrada ou bloqueada!", Color3.fromRGB(255, 50, 50))
                         task.wait(3)
                     end
                 end
@@ -335,12 +350,18 @@ function _G.BloxburgChef.Start(food)
                     end
                     if cookingStatus == "finished" then break end
 
+                    -- =========================================================
+                    -- NOVA LÓGICA: LÊ A AÇÃO E DECIDE SE VAI PRO FOGÃO OU BALCÃO
+                    -- =========================================================
                     local isStove = string.find(actText, "fry") or string.find(actText, "boil") or string.find(actText, "cook") or string.find(actText, "bake") or string.find(actText, "fritar") or string.find(actText, "ferver") or string.find(actText, "cozinhar") or string.find(actText, "assar")
-                    local targetName = isStove and "Basic Stove" or "Basic Counter"
+                    
+                    -- Se a ação pedir fogo (isStove for true), ele vai pro fogão. Se não, vai pro balcão.
+                    local targetStationType = isStove and "stove" or "counter"
 
-                    Log("Indo para " .. targetName .. "...", Color3.fromRGB(150, 200, 255))
+                    Log("Ação '" .. actText .. "' detectada. Indo para " .. targetStationType .. "...", Color3.fromRGB(150, 200, 255))
 
-                    if MoveToStation(targetName) then
+                    -- Manda o bot andar pro destino inteligente (stove ou counter)
+                    if MoveToStation(targetStationType) then
                         task.wait(0.5)
 
                         local interactUI = PlayerGui:FindFirstChild("_interactUI")
