@@ -58,6 +58,9 @@ function SmartDoor.Cancelar()
     end)
 end
 
+-- ==========================================
+-- 🚪 INTERAÇÃO PRECISA COM A PORTA
+-- ==========================================
 local function HandleDoorInteraction()
     if tick() - lastDoorClick < 1.0 then return false end 
 
@@ -66,15 +69,28 @@ local function HandleDoorInteraction()
 
     local interactUI = PlayerGui:FindFirstChild("_interactUI")
     if interactUI then
-        local center = interactUI:FindFirstChild("Center")
-        local button = center and center:FindFirstChild("Button")
-        local textLabel = button and button:FindFirstChild("TextLabel")
+        -- Usa o caminho exato que você descobriu no Dex!
+        local indicator = interactUI:FindFirstChild("InteractIndicator")
+        local textLabel = indicator and indicator:FindFirstChild("TextLabel")
+
+        -- Fallback de segurança pro padrão antigo caso o jogo mude
+        if not textLabel then
+            local center = interactUI:FindFirstChild("Center")
+            local button = center and center:FindFirstChild("Button")
+            textLabel = button and button:FindFirstChild("TextLabel")
+        end
 
         if textLabel and textLabel.Text ~= "" then
             local txt = string.lower(textLabel.Text)
-            -- Interage APENAS se pedir para abrir (ignora o fechar)
+            
+            -- Se já tá "Close", a porta tá aberta! Ignora e passa reto.
+            if string.find(txt, "close") or string.find(txt, "fechar") then
+                return false
+            end
+
+            -- Só aperta E se for pra Abrir
             if string.find(txt, "open") or string.find(txt, "abrir") then
-                LogSD("🚪 Porta no caminho! Apertando E para abrir...")
+                LogSD("🚪 UI de abrir detectada! Apertando E...")
                 lastDoorClick = tick()
                 task.spawn(function()
                     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
@@ -118,7 +134,6 @@ function SmartDoor.IrPara(destino)
         tentativaAtual = tentativaAtual + 1
         LogSD("📍 Calculando rota (Tentativa " .. tentativaAtual .. "/5)...")
 
-        -- LIGA OS FANTASMAS: O GPS ignora portas trancadas!
         AlterarFantasmas("LIGAR")
 
         local path = PathfindingService:CreatePath({
@@ -130,7 +145,6 @@ function SmartDoor.IrPara(destino)
 
         local success, err = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
 
-        -- DESLIGA OS FANTASMAS logo após calcular
         AlterarFantasmas("DESLIGAR")
 
         if success and path.Status == Enum.PathStatus.Success then
@@ -152,16 +166,15 @@ function SmartDoor.IrPara(destino)
                     if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
                     hum:MoveTo(wp.Position) 
 
-                    -- Se no meio da caminhada aparecer a UI de abrir porta...
+                    -- Checa se trombou numa porta fechada
                     if HandleDoorInteraction() then
                         LogSD("⏳ Aguardando a porta abrir fisicamente...")
-                        hum:MoveTo(hrp.Position) -- Puxa o freio
-                        task.wait(1.5) -- Dá tempo para a animação da porta no Bloxburg
+                        hum:MoveTo(hrp.Position) 
+                        task.wait(1.5) 
                         precisouRecalcular = true
                         break
                     end
 
-                    -- Sistema anti-stuck (se ficar preso na parede, ele pula)
                     if tick() - tempoChecagemStuck > 0.6 then
                         if (hrp.Position - lastPos).Magnitude < 1 then hum.Jump = true end
                         lastPos = hrp.Position
@@ -183,7 +196,7 @@ function SmartDoor.IrPara(destino)
             end
 
         else
-            LogSD("🚨 Caminho bloqueado estruturalmente (Sem paredes/portas)! Cancelando.")
+            LogSD("🚨 Caminho bloqueado estruturalmente! Cancelando.")
             break
         end
     end
