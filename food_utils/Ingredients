@@ -35,14 +35,14 @@ local function ForceClick(element)
         VirtualInputManager:SendMouseButtonEvent(x, y + inset.Y, 0, false, game, 1)
         clicked = true
     end)
-    
+
     return clicked
 end
 
 function food_select.Pegar(foodName)
     foodName = foodName or defaultFood
     local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
-    
+
     local listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)")
     if not listMenu or not listMenu.Enabled then return false end
 
@@ -57,7 +57,7 @@ function food_select.Pegar(foodName)
 
     if foodRow then
         local takeBtn = nil
-        
+
         for _, child in pairs(foodRow:GetDescendants()) do
             if child:IsA("TextButton") or child:IsA("ImageButton") then
                 local txtLabel = child:FindFirstChildWhichIsA("TextLabel")
@@ -67,7 +67,7 @@ function food_select.Pegar(foodName)
                 end
             end
         end
-        
+
         if not takeBtn then
             takeBtn = foodRow:FindFirstChildWhichIsA("TextButton", true) or foodRow:FindFirstChildWhichIsA("ImageButton", true) or foodRow
         end
@@ -78,3 +78,6 @@ function food_select.Pegar(foodName)
         return false
     end
 end
+
+-- ESSA É A ÚNICA LINHA QUE FALTAVA:
+return food_select
