@@ -14,6 +14,39 @@ local function LogSD(msg)
     end
 end
 
+-- ==========================================
+-- 🚪 GERENCIAMENTO DOS FANTASMAS
+-- ==========================================
+local function AlterarFantasmas(estado)
+    local plots = workspace:FindFirstChild("Plots")
+    if not plots then return end
+
+    for _, plot in pairs(plots:GetChildren()) do
+        if plot:FindFirstChild("House") and plot.House:FindFirstChild("Walls") then
+            for _, obj in pairs(plot.House.Walls:GetDescendants()) do
+                if obj:IsA("BasePart") then
+                    local nome = string.lower(obj.Name)
+                    local nomePai = obj.Parent and string.lower(obj.Parent.Name) or ""
+                    
+                    if string.find(nome, "door") or string.find(nomePai, "door") then
+                        if estado == "LIGAR" then
+                            if not obj:FindFirstChild("IgnorarNoGPS") then
+                                local modifier = Instance.new("PathfindingModifier")
+                                modifier.Name = "IgnorarNoGPS"
+                                modifier.PassThrough = true
+                                modifier.Parent = obj
+                            end
+                        elseif estado == "DESLIGAR" then
+                            local fantasma = obj:FindFirstChild("IgnorarNoGPS")
+                            if fantasma then fantasma:Destroy() end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
 function SmartDoor.Cancelar()
     SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
     LogSD("🛑 Rota Cancelada e freio puxado!")
@@ -25,36 +58,9 @@ function SmartDoor.Cancelar()
     end)
 end
 
-local function GetDoors()
-    local doors = {}
-    local plots = workspace:FindFirstChild("Plots")
-    if not plots then return doors end
-
-    for _, plot in pairs(plots:GetChildren()) do
-        local house = plot:FindFirstChild("House")
-        if house then
-            local walls = house:FindFirstChild("Walls")
-            if walls then
-                for _, wall in pairs(walls:GetChildren()) do
-                    local itemHolder = wall:FindFirstChild("ItemHolder")
-                    if itemHolder then
-                        for _, item in pairs(itemHolder:GetChildren()) do
-                            local name = string.lower(item.Name)
-                            if string.find(name, "door") or string.find(name, "porta") then
-                                table.insert(doors, item)
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return doors
-end
-
-local function HandleDoorInteraction(hrp, doors)
+local function HandleDoorInteraction()
     if tick() - lastDoorClick < 1.0 then return false end 
-    
+
     local PlayerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
     if not PlayerGui then return false end
 
@@ -63,11 +69,12 @@ local function HandleDoorInteraction(hrp, doors)
         local center = interactUI:FindFirstChild("Center")
         local button = center and center:FindFirstChild("Button")
         local textLabel = button and button:FindFirstChild("TextLabel")
-        
+
         if textLabel and textLabel.Text ~= "" then
             local txt = string.lower(textLabel.Text)
+            -- Interage APENAS se pedir para abrir (ignora o fechar)
             if string.find(txt, "open") or string.find(txt, "abrir") then
-                LogSD("🚪 UI de abrir detectada! Apertando E...")
+                LogSD("🚪 Porta no caminho! Apertando E para abrir...")
                 lastDoorClick = tick()
                 task.spawn(function()
                     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
@@ -75,8 +82,6 @@ local function HandleDoorInteraction(hrp, doors)
                     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
                 end)
                 return true 
-            elseif string.find(txt, "close") or string.find(txt, "fechar") then
-                return false
             end
         end
     end
@@ -111,23 +116,27 @@ function SmartDoor.IrPara(destino)
     while tentativaAtual < maxTentativas do
         if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
         tentativaAtual = tentativaAtual + 1
-        LogSD("📍 Calculando rota pra geladeira (Tentativa " .. tentativaAtual .. "/5)...")
+        LogSD("📍 Calculando rota (Tentativa " .. tentativaAtual .. "/5)...")
 
-        local doors = GetDoors()
+        -- LIGA OS FANTASMAS: O GPS ignora portas trancadas!
+        AlterarFantasmas("LIGAR")
 
         local path = PathfindingService:CreatePath({
-            AgentRadius = 1.0, 
-            AgentHeight = 4, 
+            AgentRadius = 1.2, 
+            AgentHeight = 5, 
             AgentCanJump = true, 
             WaypointSpacing = 3 
         })
 
         local success, err = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
 
+        -- DESLIGA OS FANTASMAS logo após calcular
+        AlterarFantasmas("DESLIGAR")
+
         if success and path.Status == Enum.PathStatus.Success then
             local waypoints = path:GetWaypoints()
             LogSD("✅ Rota livre encontrada! Andando...")
-            
+
             local precisouRecalcular = false
 
             for i, wp in ipairs(waypoints) do
@@ -142,15 +151,17 @@ function SmartDoor.IrPara(destino)
                 while (hrp.Position - wp.Position).Magnitude > 3.5 do
                     if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
                     hum:MoveTo(wp.Position) 
-                    
-                    if HandleDoorInteraction(hrp, doors) then
-                        LogSD("⏳ Abriu uma porta no meio do caminho! Recalculando...")
-                        hum:MoveTo(hrp.Position)
-                        task.wait(1.5)
+
+                    -- Se no meio da caminhada aparecer a UI de abrir porta...
+                    if HandleDoorInteraction() then
+                        LogSD("⏳ Aguardando a porta abrir fisicamente...")
+                        hum:MoveTo(hrp.Position) -- Puxa o freio
+                        task.wait(1.5) -- Dá tempo para a animação da porta no Bloxburg
                         precisouRecalcular = true
                         break
                     end
 
+                    -- Sistema anti-stuck (se ficar preso na parede, ele pula)
                     if tick() - tempoChecagemStuck > 0.6 then
                         if (hrp.Position - lastPos).Magnitude < 1 then hum.Jump = true end
                         lastPos = hrp.Position
@@ -163,7 +174,7 @@ function SmartDoor.IrPara(destino)
 
                 if precisouRecalcular then break end
             end
-            
+
             if not precisouRecalcular then
                 if (hrp.Position - targetPos).Magnitude < 5 then
                     LogSD("🎯 Destino alcançado com sucesso!")
@@ -172,121 +183,12 @@ function SmartDoor.IrPara(destino)
             end
 
         else
-            LogSD("🚨 Caminho bloqueado! Achando a porta mais próxima...")
-            
-            local bestDoor = nil
-            local bestDist = math.huge
-
-            for _, door in pairs(doors) do
-                if door and door.Parent then
-                    local dPos = door:GetPivot().Position
-                    local dist = (hrp.Position - dPos).Magnitude
-                    if dist < bestDist then
-                        bestDist = dist
-                        bestDoor = door
-                    end
-                end
-            end
-
-            if bestDoor then
-                local doorPos = bestDoor:GetPivot().Position
-                LogSD("🚶 Indo até a porta pra destrancar...")
-
-                local doorPath = PathfindingService:CreatePath({ AgentRadius = 1.0, AgentHeight = 4, AgentCanJump = true })
-                doorPath:ComputeAsync(hrp.Position, doorPos)
-
-                local dWaypoints = {}
-                if doorPath.Status == Enum.PathStatus.Success then
-                    dWaypoints = doorPath:GetWaypoints()
-                else
-                    table.insert(dWaypoints, {Position = doorPos, Action = Enum.PathWaypointAction.Walk})
-                end
-
-                local abriuPorta = false
-
-                for i, wp in ipairs(dWaypoints) do
-                    if SmartDoor.CurrentWalkId ~= myWalkId then return false end
-                    if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
-
-                    local tempoInicio = tick()
-                    local tempoChecagemStuck = tick()
-                    local lastPos = hrp.Position
-
-                    while (hrp.Position - wp.Position).Magnitude > 3 do
-                        if SmartDoor.CurrentWalkId ~= myWalkId then return false end
-                        
-                        local distParaPorta = (hrp.Position - doorPos).Magnitude
-                        
-                        -- AUMENTADA A DISTÂNCIA DE FREIO PARA 6.5 (Bem mais longe da porta)
-                        if distParaPorta < 6.5 then
-                            LogSD("🛑 Distância segura atingida. Parando de frente pra porta...")
-                            
-                            -- Dá um passinho minúsculo em direção à porta só pra alinhar o corpo e ajudar a UI a aparecer
-                            hum:MoveTo(doorPos)
-                            task.wait(0.1)
-                            hum:MoveTo(hrp.Position) -- Puxa o freio de vez
-                            
-                            local apertouNaUI = false
-                            local tempoParado = tick()
-                            
-                            -- Fica 2 segundos parado tentando ler a UI pra apertar E
-                            while tick() - tempoParado < 2 do
-                                if HandleDoorInteraction(hrp, doors) then
-                                    LogSD("✅ Apertou E pela UI! Esperando a porta abrir...")
-                                    task.wait(1.5)
-                                    abriuPorta = true
-                                    apertouNaUI = true
-                                    break
-                                end
-                                task.wait(0.2)
-                            end
-                            
-                            -- SISTEMA DE FORÇA BRUTA: Se a UI não apareceu em 2 segundos, aperta E na marra!
-                            if not apertouNaUI then
-                                LogSD("⚠️ UI não apareceu. Forçando o E por segurança!")
-                                task.spawn(function()
-                                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                                    task.wait(0.1)
-                                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-                                end)
-                                task.wait(1.5)
-                                abriuPorta = true
-                            end
-                            
-                            break -- Sai do loop de andar em direção à porta
-                        end
-
-                        hum:MoveTo(wp.Position)
-
-                        if HandleDoorInteraction(hrp, doors) then
-                            LogSD("✅ Apertou E no caminho! Esperando abrir...")
-                            hum:MoveTo(hrp.Position)
-                            task.wait(1.5) 
-                            abriuPorta = true
-                            break
-                        end
-
-                        if tick() - tempoChecagemStuck > 0.6 then
-                            if (hrp.Position - lastPos).Magnitude < 1 then hum.Jump = true end
-                            lastPos = hrp.Position
-                            tempoChecagemStuck = tick()
-                        end
-
-                        if tick() - tempoInicio > 4 then break end
-                        task.wait()
-                    end
-                    if abriuPorta or (hrp.Position - doorPos).Magnitude < 6.5 then break end 
-                end
-            else
-                LogSD("❌ Nenhuma porta encontrada! Tentando ir reto...")
-                local flatTarget = Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z)
-                hum:MoveTo(flatTarget)
-                task.wait(2)
-            end
+            LogSD("🚨 Caminho bloqueado estruturalmente (Sem paredes/portas)! Cancelando.")
+            break
         end
     end
 
-    LogSD("❌ Falhou após várias tentativas. Casa totalmente trancada.")
+    LogSD("❌ Falhou após várias tentativas.")
     return false
 end
 
