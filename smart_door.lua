@@ -47,6 +47,26 @@ local function AlterarFantasmas(estado)
     end
 end
 
+local function TransformarAlvoEmFantasma(alvo, estado)
+    if not alvo then return end
+    local model = alvo:FindFirstAncestorWhichIsA("Model") or alvo
+    for _, part in pairs(model:GetDescendants()) do
+        if part:IsA("BasePart") then
+            if estado == "LIGAR" then
+                if not part:FindFirstChild("FantasmaAlvo") then
+                    local mod = Instance.new("PathfindingModifier")
+                    mod.Name = "FantasmaAlvo"
+                    mod.PassThrough = true
+                    mod.Parent = part
+                end
+            else
+                local mod = part:FindFirstChild("FantasmaAlvo")
+                if mod then mod:Destroy() end
+            end
+        end
+    end
+end
+
 function SmartDoor.Cancelar()
     SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
     LogSD("🛑 Rota Cancelada e freio puxado!")
@@ -58,9 +78,6 @@ function SmartDoor.Cancelar()
     end)
 end
 
--- ==========================================
--- 🚪 INTERAÇÃO PRECISA COM A PORTA
--- ==========================================
 local function HandleDoorInteraction()
     if tick() - lastDoorClick < 1.0 then return false end 
 
@@ -69,11 +86,9 @@ local function HandleDoorInteraction()
 
     local interactUI = PlayerGui:FindFirstChild("_interactUI")
     if interactUI then
-        -- Usa o caminho exato que você descobriu no Dex!
         local indicator = interactUI:FindFirstChild("InteractIndicator")
         local textLabel = indicator and indicator:FindFirstChild("TextLabel")
 
-        -- Fallback de segurança pro padrão antigo caso o jogo mude
         if not textLabel then
             local center = interactUI:FindFirstChild("Center")
             local button = center and center:FindFirstChild("Button")
@@ -83,12 +98,10 @@ local function HandleDoorInteraction()
         if textLabel and textLabel.Text ~= "" then
             local txt = string.lower(textLabel.Text)
             
-            -- Se já tá "Close", a porta tá aberta! Ignora e passa reto.
             if string.find(txt, "close") or string.find(txt, "fechar") then
                 return false
             end
 
-            -- Só aperta E se for pra Abrir
             if string.find(txt, "open") or string.find(txt, "abrir") then
                 LogSD("🚪 UI de abrir detectada! Apertando E...")
                 lastDoorClick = tick()
@@ -135,9 +148,10 @@ function SmartDoor.IrPara(destino)
         LogSD("📍 Calculando rota (Tentativa " .. tentativaAtual .. "/5)...")
 
         AlterarFantasmas("LIGAR")
+        if typeof(destino) == "Instance" then TransformarAlvoEmFantasma(destino, "LIGAR") end
 
         local path = PathfindingService:CreatePath({
-            AgentRadius = 1.2, 
+            AgentRadius = 0.8, -- Fino para passar nas portas sem medo
             AgentHeight = 5, 
             AgentCanJump = true, 
             WaypointSpacing = 3 
@@ -146,15 +160,28 @@ function SmartDoor.IrPara(destino)
         local success, err = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
 
         AlterarFantasmas("DESLIGAR")
+        if typeof(destino) == "Instance" then TransformarAlvoEmFantasma(destino, "DESLIGAR") end
 
-        if success and path.Status == Enum.PathStatus.Success then
+        -- Se a rota teve sucesso OU chegou no status "Closest" (O mais perto possível do fogão)
+        if success and (path.Status == Enum.PathStatus.Success or path.Status == Enum.PathStatus.Closest) then
             local waypoints = path:GetWaypoints()
-            LogSD("✅ Rota livre encontrada! Andando...")
+            local limiteDePassos = #waypoints
 
+            -- A SUA IDEIA: "PEGA UM ATRÁS"
+            -- Se ele identificou que o alvo é sólido (Closest) e tem mais de 1 passo, a gente apaga o último passo que estaria dentro do móvel!
+            if path.Status == Enum.PathStatus.Closest and limiteDePassos > 1 then
+                limiteDePassos = limiteDePassos - 1
+                LogSD("⚠️ Alvo é sólido. Parando um passo atrás do móvel para não bugar!")
+            end
+
+            LogSD("✅ Rota segura encontrada! Andando...")
             local precisouRecalcular = false
 
-            for i, wp in ipairs(waypoints) do
+            -- Só vai andar até o "limiteDePassos" (um atrás)
+            for i = 1, limiteDePassos do
                 if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
+                local wp = waypoints[i]
+                
                 if i == 1 and (hrp.Position - wp.Position).Magnitude < 3 then continue end
                 if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
 
@@ -166,7 +193,6 @@ function SmartDoor.IrPara(destino)
                     if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
                     hum:MoveTo(wp.Position) 
 
-                    -- Checa se trombou numa porta fechada
                     if HandleDoorInteraction() then
                         LogSD("⏳ Aguardando a porta abrir fisicamente...")
                         hum:MoveTo(hrp.Position) 
@@ -189,15 +215,18 @@ function SmartDoor.IrPara(destino)
             end
 
             if not precisouRecalcular then
-                if (hrp.Position - targetPos).Magnitude < 5 then
+                -- Checagem de distância mais generosa já que ele parou "um passo atrás"
+                if (hrp.Position - targetPos).Magnitude < 7 then
                     LogSD("🎯 Destino alcançado com sucesso!")
                     return true
+                else
+                    LogSD("🚨 Não chegou perto o suficiente. Recalculando...")
                 end
             end
 
         else
-            LogSD("🚨 Caminho bloqueado estruturalmente! Cancelando.")
-            break
+            LogSD("🚨 Caminho bloqueado pelo labirinto de paredes! Tentando dnv...")
+            task.wait(1) -- Espera um pouco antes de tentar a próxima pra não dar lag
         end
     end
 
