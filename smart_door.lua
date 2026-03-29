@@ -170,6 +170,9 @@ function SmartDoor.IrPara(destino)
                 local tempoChecagemStuck = tick()
                 local lastPos = hrp.Position
 
+                -- Dá a ordem de andar UMA ÚNICA VEZ para o Roblox não engasgar!
+                hum:MoveTo(wp.Position) 
+
                 while (hrp.Position - wp.Position).Magnitude > 1.5 do
                     if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
                     
@@ -181,19 +184,13 @@ function SmartDoor.IrPara(destino)
                         break
                     end
 
-                    hum:MoveTo(wp.Position) 
-
-                    -- ==============================================================
-                    -- A SUA LÓGICA PERFEITA: SENSOR DE PORTA CONTÍNUO
-                    -- ==============================================================
                     local textoUI = LerTextoDaInterface()
                     
                     if textoUI and (string.find(textoUI, "open") or string.find(textoUI, "abrir")) then
                         LogSD("🚪 Porta na frente! Puxando o freio para abrir...")
-                        hum:MoveTo(hrp.Position) -- Freia imediatamente
+                        hum:MoveTo(hrp.Position) -- Puxa o freio!
                         
                         local tempoTentando = tick()
-                        -- Tenta abrir a porta por até 5 segundos
                         while tick() - tempoTentando < 5 do
                             if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
                             
@@ -202,11 +199,12 @@ function SmartDoor.IrPara(destino)
                             if statusAtual then
                                 if string.find(statusAtual, "close") or string.find(statusAtual, "fechar") then
                                     LogSD("🔓 O caminho está livre! Retomando a caminhada...")
-                                    task.wait(0.3) -- Dá um tempinho pra animação fluir
-                                    break -- Sai do loop de espera e volta a andar pra frente
+                                    task.wait(0.3) 
+                                    -- A porta abriu, manda ele voltar a andar UMA vez de novo!
+                                    hum:MoveTo(wp.Position)
+                                    break 
                                     
                                 elseif string.find(statusAtual, "open") or string.find(statusAtual, "abrir") then
-                                    -- A porta ainda tá fechada, aperta E!
                                     if tick() - lastDoorClick > 1.0 then
                                         lastDoorClick = tick()
                                         LogSD("👉 Apertando E para abrir...")
@@ -218,8 +216,6 @@ function SmartDoor.IrPara(destino)
                                     end
                                 end
                             else
-                                -- Se a interface sumir, significa que o boneco escorregou um pouco pra longe
-                                -- Dá um micro passinho pra frente pra fazer a placa "Open" voltar pra tela
                                 hum:MoveTo(wp.Position)
                                 task.wait(0.1)
                                 hum:MoveTo(hrp.Position)
