@@ -27,7 +27,7 @@ local function AlterarFantasmas(estado)
                 if obj:IsA("BasePart") then
                     local nome = string.lower(obj.Name)
                     local nomePai = obj.Parent and string.lower(obj.Parent.Name) or ""
-
+                    
                     if string.find(nome, "door") or string.find(nomePai, "door") then
                         if estado == "LIGAR" then
                             if not obj:FindFirstChild("IgnorarNoGPS") then
@@ -162,22 +162,22 @@ function SmartDoor.IrPara(destino)
             for i = 1, limiteDePassos do
                 if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
                 local wp = waypoints[i]
-
+                
                 if i == 1 and (hrp.Position - wp.Position).Magnitude < 3 then continue end
                 if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
 
                 local tempoInicioWhileLoop = tick()
                 local tempoChecagemStuck = tick()
-                local tempoDoUltimoCheckDePortaDentroDoWhile = tick()
-                local lastPos = hrp.Position -- ✅ CORREÇÃO APLICADA AQUI
-
-                -- Ordem de andar UMA ÚNICA VEZ fora do while para suavidade
-                hum:MoveTo(wp.Position) 
+                
+                -- Timers para não engasgar o Roblox
+                local tempoUltimoMove = 0
+                local tempoDoUltimoCheckDePorta = tick() 
+                local lastPos = hrp.Position
 
                 while (hrp.Position - wp.Position).Magnitude > 1.5 do
                     if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
-
-                    -- FREIO DE PROXIMIDADE (Mantemos, é rápido)
+                    
+                    -- Freio de segurança 2D
                     local dist2D = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
                     if dist2D <= 3.0 then
                         LogSD("🎯 Chegou perfeitamente na frente do alvo!")
@@ -186,32 +186,34 @@ function SmartDoor.IrPara(destino)
                         break
                     end
 
-                    -- ==============================================================
-                    -- REDUZINDO O LAG: THROTTLE DO CHECK DE PORTA
-                    -- ==============================================================
-                    -- Em vez de verificar GUI/texto todo frame (0.01s), verificamos a cada 0.15s
-                    if tick() - tempoDoUltimoCheckDePortaDentroDoWhile > 0.15 then
-                        local textoUI = LerTextoDaInterface()
+                    -- Manda andar suavemente a cada 0.1 segundos (Não engasga e não deixa ele travar!)
+                    if tick() - tempoUltimoMove > 0.1 then
+                        hum:MoveTo(wp.Position)
+                        tempoUltimoMove = tick()
+                    end
 
+                    -- Verificador da porta a cada 0.15 segundos
+                    if tick() - tempoDoUltimoCheckDePorta > 0.15 then
+                        local textoUI = LerTextoDaInterface()
+                        
                         if textoUI and (string.find(textoUI, "open") or string.find(textoUI, "abrir")) then
                             LogSD("🚪 Porta na frente! Puxando o freio para abrir...")
-                            hum:MoveTo(hrp.Position) -- Puxa o freio imediatamente
-
+                            hum:MoveTo(hrp.Position) 
+                            
                             local tempoTentando = tick()
-                            -- Loop intenso de abertura, mas boneco parado, então sem lag de caminhada
                             while tick() - tempoTentando < 5 do
                                 if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
-
+                                
                                 local statusAtual = LerTextoDaInterface()
-
+                                
                                 if statusAtual then
                                     if string.find(statusAtual, "close") or string.find(statusAtual, "fechar") then
                                         LogSD("🔓 O caminho está livre! Retomando a caminhada...")
                                         task.wait(0.3) 
-                                        -- A porta abriu, manda ele voltar a andar UMA vez de novo!
                                         hum:MoveTo(wp.Position)
+                                        tempoUltimoMove = tick()
                                         break 
-
+                                        
                                     elseif string.find(statusAtual, "open") or string.find(statusAtual, "abrir") then
                                         if tick() - lastDoorClick > 1.0 then
                                             lastDoorClick = tick()
@@ -224,7 +226,6 @@ function SmartDoor.IrPara(destino)
                                         end
                                     end
                                 else
-                                    -- Micro passinho se a UI sumir
                                     hum:MoveTo(wp.Position)
                                     task.wait(0.1)
                                     hum:MoveTo(hrp.Position)
@@ -232,23 +233,25 @@ function SmartDoor.IrPara(destino)
                                 task.wait(0.2)
                             end
                         end
-                        tempoDoUltimoCheckDePortaDentroDoWhile = tick() -- Reseta timer de porta
+                        tempoDoUltimoCheckDePorta = tick() 
                     end
 
-                    -- STUCK CHECK (Mantemos throttled a 0.6s)
+                    -- Anti-stuck: se prender, ele pula e reseta o tempo de andar
                     if tick() - tempoChecagemStuck > 0.6 then
-                        if (hrp.Position - lastPos).Magnitude < 1 then hum.Jump = true end
+                        if (hrp.Position - lastPos).Magnitude < 1 then 
+                            hum.Jump = true 
+                            tempoUltimoMove = 0 -- Força um MoveTo imediato para não perder o embalo
+                        end
                         lastPos = hrp.Position
                         tempoChecagemStuck = tick()
                     end
 
                     if tick() - tempoInicioWhileLoop > 3.5 then break end
-                    task.wait() -- Espera um frame físico
+                    task.wait() 
                 end
 
                 if chegouNoAlvo then break end
-
-                -- Check de segurança 2D fora do while
+                
                 local dist2D = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
                 if dist2D <= 3.0 then
                     hum:MoveTo(hrp.Position)
