@@ -27,7 +27,7 @@ local function AlterarFantasmas(estado)
                 if obj:IsA("BasePart") then
                     local nome = string.lower(obj.Name)
                     local nomePai = obj.Parent and string.lower(obj.Parent.Name) or ""
-                    
+
                     if string.find(nome, "door") or string.find(nomePai, "door") then
                         if estado == "LIGAR" then
                             if not obj:FindFirstChild("IgnorarNoGPS") then
@@ -162,20 +162,21 @@ function SmartDoor.IrPara(destino)
             for i = 1, limiteDePassos do
                 if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
                 local wp = waypoints[i]
-                
+
                 if i == 1 and (hrp.Position - wp.Position).Magnitude < 3 then continue end
                 if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
 
                 local tempoInicioWhileLoop = tick()
                 local tempoChecagemStuck = tick()
-                local tempoDoUltimoCheckDePortaDentroDoWhile = tick() -- NOVA VARIAVEL THRESHOLD
+                local tempoDoUltimoCheckDePortaDentroDoWhile = tick()
+                local lastPos = hrp.Position -- ✅ CORREÇÃO APLICADA AQUI
 
                 -- Ordem de andar UMA ÚNICA VEZ fora do while para suavidade
                 hum:MoveTo(wp.Position) 
 
                 while (hrp.Position - wp.Position).Magnitude > 1.5 do
                     if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
-                    
+
                     -- FREIO DE PROXIMIDADE (Mantemos, é rápido)
                     local dist2D = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
                     if dist2D <= 3.0 then
@@ -191,18 +192,18 @@ function SmartDoor.IrPara(destino)
                     -- Em vez de verificar GUI/texto todo frame (0.01s), verificamos a cada 0.15s
                     if tick() - tempoDoUltimoCheckDePortaDentroDoWhile > 0.15 then
                         local textoUI = LerTextoDaInterface()
-                        
+
                         if textoUI and (string.find(textoUI, "open") or string.find(textoUI, "abrir")) then
                             LogSD("🚪 Porta na frente! Puxando o freio para abrir...")
                             hum:MoveTo(hrp.Position) -- Puxa o freio imediatamente
-                            
+
                             local tempoTentando = tick()
                             -- Loop intenso de abertura, mas boneco parado, então sem lag de caminhada
                             while tick() - tempoTentando < 5 do
                                 if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
-                                
+
                                 local statusAtual = LerTextoDaInterface()
-                                
+
                                 if statusAtual then
                                     if string.find(statusAtual, "close") or string.find(statusAtual, "fechar") then
                                         LogSD("🔓 O caminho está livre! Retomando a caminhada...")
@@ -210,7 +211,7 @@ function SmartDoor.IrPara(destino)
                                         -- A porta abriu, manda ele voltar a andar UMA vez de novo!
                                         hum:MoveTo(wp.Position)
                                         break 
-                                        
+
                                     elseif string.find(statusAtual, "open") or string.find(statusAtual, "abrir") then
                                         if tick() - lastDoorClick > 1.0 then
                                             lastDoorClick = tick()
@@ -246,7 +247,7 @@ function SmartDoor.IrPara(destino)
                 end
 
                 if chegouNoAlvo then break end
-                
+
                 -- Check de segurança 2D fora do while
                 local dist2D = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
                 if dist2D <= 3.0 then
