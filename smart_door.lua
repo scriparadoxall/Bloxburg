@@ -78,11 +78,12 @@ function SmartDoor.Cancelar()
     end)
 end
 
-local function HandleDoorInteraction()
-    if tick() - lastDoorClick < 1.0 then return false end 
-
+-- ==========================================
+-- 👁️ LEITOR DE PLACAS DA PORTA
+-- ==========================================
+local function LerTextoDaInterface()
     local PlayerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
-    if not PlayerGui then return false end
+    if not PlayerGui then return nil end
 
     local interactUI = PlayerGui:FindFirstChild("_interactUI")
     if interactUI then
@@ -96,25 +97,10 @@ local function HandleDoorInteraction()
         end
 
         if textLabel and textLabel.Text ~= "" then
-            local txt = string.lower(textLabel.Text)
-            
-            if string.find(txt, "close") or string.find(txt, "fechar") then
-                return false
-            end
-
-            if string.find(txt, "open") or string.find(txt, "abrir") then
-                LogSD("🚪 UI de abrir detectada! Apertando E...")
-                lastDoorClick = tick()
-                task.spawn(function()
-                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                    task.wait(0.1)
-                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-                end)
-                return true 
-            end
+            return string.lower(textLabel.Text)
         end
     end
-    return false
+    return nil
 end
 
 function SmartDoor.IrPara(destino)
@@ -162,19 +148,16 @@ function SmartDoor.IrPara(destino)
         AlterarFantasmas("DESLIGAR")
         if typeof(destino) == "Instance" then TransformarAlvoEmFantasma(destino, "DESLIGAR") end
 
-        -- CORREÇÃO: Mudado de Closest para ClosestNoPath
         if success and (path.Status == Enum.PathStatus.Success or path.Status == Enum.PathStatus.ClosestNoPath) then
             local waypoints = path:GetWaypoints()
             local limiteDePassos = #waypoints
 
-            -- CORREÇÃO: Mudado de Closest para ClosestNoPath
             if path.Status == Enum.PathStatus.ClosestNoPath and limiteDePassos > 1 then
                 limiteDePassos = limiteDePassos - 1
-                LogSD("⚠️ Alvo é sólido. Parando um passo atrás do móvel para não bugar!")
             end
 
             LogSD("✅ Rota segura encontrada! Andando...")
-            local precisouRecalcular = false
+            local chegouNoAlvo = false
 
             for i = 1, limiteDePassos do
                 if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
@@ -187,16 +170,62 @@ function SmartDoor.IrPara(destino)
                 local tempoChecagemStuck = tick()
                 local lastPos = hrp.Position
 
-                while (hrp.Position - wp.Position).Magnitude > 3.5 do
+                while (hrp.Position - wp.Position).Magnitude > 1.5 do
                     if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
+                    
+                    local dist2D = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
+                    if dist2D <= 3.0 then
+                        LogSD("🎯 Chegou perfeitamente na frente do alvo!")
+                        hum:MoveTo(hrp.Position) 
+                        chegouNoAlvo = true
+                        break
+                    end
+
                     hum:MoveTo(wp.Position) 
 
-                    if HandleDoorInteraction() then
-                        LogSD("⏳ Aguardando a porta abrir fisicamente...")
-                        hum:MoveTo(hrp.Position) 
-                        task.wait(1.5) 
-                        precisouRecalcular = true
-                        break
+                    -- ==============================================================
+                    -- A SUA LÓGICA PERFEITA: SENSOR DE PORTA CONTÍNUO
+                    -- ==============================================================
+                    local textoUI = LerTextoDaInterface()
+                    
+                    if textoUI and (string.find(textoUI, "open") or string.find(textoUI, "abrir")) then
+                        LogSD("🚪 Porta na frente! Puxando o freio para abrir...")
+                        hum:MoveTo(hrp.Position) -- Freia imediatamente
+                        
+                        local tempoTentando = tick()
+                        -- Tenta abrir a porta por até 5 segundos
+                        while tick() - tempoTentando < 5 do
+                            if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
+                            
+                            local statusAtual = LerTextoDaInterface()
+                            
+                            if statusAtual then
+                                if string.find(statusAtual, "close") or string.find(statusAtual, "fechar") then
+                                    LogSD("🔓 O caminho está livre! Retomando a caminhada...")
+                                    task.wait(0.3) -- Dá um tempinho pra animação fluir
+                                    break -- Sai do loop de espera e volta a andar pra frente
+                                    
+                                elseif string.find(statusAtual, "open") or string.find(statusAtual, "abrir") then
+                                    -- A porta ainda tá fechada, aperta E!
+                                    if tick() - lastDoorClick > 1.0 then
+                                        lastDoorClick = tick()
+                                        LogSD("👉 Apertando E para abrir...")
+                                        task.spawn(function()
+                                            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                                            task.wait(0.1)
+                                            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                                        end)
+                                    end
+                                end
+                            else
+                                -- Se a interface sumir, significa que o boneco escorregou um pouco pra longe
+                                -- Dá um micro passinho pra frente pra fazer a placa "Open" voltar pra tela
+                                hum:MoveTo(wp.Position)
+                                task.wait(0.1)
+                                hum:MoveTo(hrp.Position)
+                            end
+                            task.wait(0.2)
+                        end
                     end
 
                     if tick() - tempoChecagemStuck > 0.6 then
@@ -209,16 +238,21 @@ function SmartDoor.IrPara(destino)
                     task.wait() 
                 end
 
-                if precisouRecalcular then break end
+                if chegouNoAlvo then break end
+                
+                local dist2D = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
+                if dist2D <= 3.0 then
+                    hum:MoveTo(hrp.Position)
+                    chegouNoAlvo = true
+                    break
+                end
             end
 
-            if not precisouRecalcular then
-                if (hrp.Position - targetPos).Magnitude < 7 then
-                    LogSD("🎯 Destino alcançado com sucesso!")
-                    return true
-                else
-                    LogSD("🚨 Não chegou perto o suficiente. Recalculando...")
-                end
+            if chegouNoAlvo or (hrp.Position - targetPos).Magnitude < 7 then
+                LogSD("✅ Posicionado e pronto para interagir!")
+                return true
+            else
+                LogSD("🚨 Não chegou perto o suficiente. Recalculando...")
             end
 
         else
