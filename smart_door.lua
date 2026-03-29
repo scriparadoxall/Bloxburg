@@ -15,7 +15,7 @@ local function LogSD(msg)
 end
 
 -- ==========================================
--- 🚪 GESTÃO DE FANTASMAS (IGNORAR PORTAS)
+-- 🚪 GERENCIAMENTO DOS FANTASMAS
 -- ==========================================
 local function AlterarFantasmas(estado)
     local plots = workspace:FindFirstChild("Plots")
@@ -69,7 +69,7 @@ end
 
 function SmartDoor.Cancelar()
     SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
-    LogSD("🛑 Rota Cancelada e travão puxado!")
+    LogSD("🛑 Rota Cancelada e freio puxado!")
     pcall(function()
         local char = Players.LocalPlayer.Character
         if char and char:FindFirstChild("Humanoid") and char:FindFirstChild("HumanoidRootPart") then
@@ -131,7 +131,7 @@ function SmartDoor.IrPara(destino)
     while tentativaAtual < maxTentativas do
         if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
         tentativaAtual = tentativaAtual + 1
-        LogSD("📍 A calcular rota (Tentativa " .. tentativaAtual .. "/5)...")
+        LogSD("📍 Calculando rota (Tentativa " .. tentativaAtual .. "/5)...")
 
         AlterarFantasmas("LIGAR")
         if typeof(destino) == "Instance" then TransformarAlvoEmFantasma(destino, "LIGAR") end
@@ -156,114 +156,91 @@ function SmartDoor.IrPara(destino)
                 limiteDePassos = limiteDePassos - 1
             end
 
-            LogSD("✅ Rota segura encontrada! A andar...")
-            local chegouNoAlvo = false
+            LogSD("✅ Rota encontrada! Andando suavemente...")
 
             for i = 1, limiteDePassos do
                 if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
                 local wp = waypoints[i]
                 
-                if i == 1 and (hrp.Position - wp.Position).Magnitude < 3 then continue end
                 if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
 
-                local tempoInicioWhileLoop = tick()
-                local tempoChecagemStuck = tick()
-                local tempoDoUltimoCheckDePorta = tick() 
-                local lastPos = hrp.Position
-
-                -- ORDEM DADA UMA ÚNICA VEZ (Sem engasgos!)
+                -- Dá a ordem de andar para o próximo ponto
                 hum:MoveTo(wp.Position) 
 
-                while (hrp.Position - wp.Position).Magnitude > 1.5 do
+                local tempoInicio = tick()
+                local tempoChecagemStuck = tick()
+                local lastPos = hrp.Position
+
+                -- Fica no loop enquanto estiver a mais de 2.5 studs do ponto (Isso tira o engasgo)
+                while (hrp.Position - wp.Position).Magnitude > 2.5 do
                     if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
                     
-                    -- Travão de proximidade
-                    local dist2D = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
-                    if dist2D <= 3.0 then
-                        LogSD("🎯 Chegou perfeitamente na frente do alvo!")
-                        hum:MoveTo(hrp.Position) 
-                        chegouNoAlvo = true
-                        break
+                    -- 1. SENSOR FINAL: Se chegou a 3 studs do fogão/geladeira, para tudo!
+                    local distFinal = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
+                    if distFinal <= 3.0 then
+                        LogSD("🎯 Chegou no alvo final!")
+                        hum:MoveTo(hrp.Position) -- Puxa freio de mão
+                        return true
                     end
 
-                    -- A verificar portas a cada 0.15s (sem causar lag de movimento)
-                    if tick() - tempoDoUltimoCheckDePorta > 0.15 then
-                        local textoUI = LerTextoDaInterface()
+                    -- 2. SENSOR DE PORTA: Só para se ver a placa "Open"
+                    local textoUI = LerTextoDaInterface()
+                    
+                    if textoUI and (string.find(textoUI, "open") or string.find(textoUI, "abrir")) then
+                        LogSD("🚪 Porta trancada detectada! Puxando freio...")
+                        hum:MoveTo(hrp.Position) -- Freia
                         
-                        if textoUI and (string.find(textoUI, "open") or string.find(textoUI, "abrir")) then
-                            LogSD("🚪 Porta na frente! Puxando o travão para abrir...")
-                            hum:MoveTo(hrp.Position) 
+                        local tempoTentando = tick()
+                        while tick() - tempoTentando < 5 do
+                            if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
                             
-                            local tempoTentando = tick()
-                            while tick() - tempoTentando < 5 do
-                                if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
-                                
-                                local statusAtual = LerTextoDaInterface()
-                                
-                                if statusAtual then
-                                    if string.find(statusAtual, "close") or string.find(statusAtual, "fechar") then
-                                        LogSD("🔓 O caminho está livre! A retomar a caminhada...")
-                                        task.wait(0.3) 
-                                        -- Voltar a andar após abrir
-                                        hum:MoveTo(wp.Position)
-                                        break 
-                                        
-                                    elseif string.find(statusAtual, "open") or string.find(statusAtual, "abrir") then
-                                        if tick() - lastDoorClick > 1.0 then
-                                            lastDoorClick = tick()
-                                            LogSD("👉 A pressionar E para abrir...")
-                                            task.spawn(function()
-                                                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                                                task.wait(0.1)
-                                                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-                                            end)
-                                        end
-                                    end
-                                else
-                                    -- A placa sumiu, dá um pequeno passo para reativar
-                                    hum:MoveTo(wp.Position)
-                                    task.wait(0.1)
-                                    hum:MoveTo(hrp.Position)
+                            local statusAtual = LerTextoDaInterface()
+                            
+                            if statusAtual and (string.find(statusAtual, "close") or string.find(statusAtual, "fechar")) then
+                                LogSD("🔓 Caminho livre! Voltando a andar...")
+                                break -- Sai do loop de abrir e retoma a vida
+                            elseif statusAtual and (string.find(statusAtual, "open") or string.find(statusAtual, "abrir")) then
+                                if tick() - lastDoorClick > 1.0 then
+                                    lastDoorClick = tick()
+                                    task.spawn(function()
+                                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                                        task.wait(0.1)
+                                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                                    end)
                                 end
-                                task.wait(0.2)
                             end
+                            task.wait(0.1)
                         end
-                        tempoDoUltimoCheckDePorta = tick() 
+                        -- Terminou de lidar com a porta, manda andar pro ponto de novo
+                        hum:MoveTo(wp.Position) 
                     end
 
-                    -- Sistema anti-bloqueio (reforça o MoveTo apenas se estiver preso)
-                    if tick() - tempoChecagemStuck > 0.6 then
-                        if (hrp.Position - lastPos).Magnitude < 1 then 
+                    -- 3. ANTI-PRESO: Se ele bater na parede e não andar, ele pula e força
+                    if tick() - tempoChecagemStuck > 0.5 then
+                        if (hrp.Position - lastPos).Magnitude < 0.5 then 
                             hum.Jump = true 
-                            hum:MoveTo(wp.Position) -- Reforço da direção!
+                            hum:MoveTo(wp.Position)
                         end
                         lastPos = hrp.Position
                         tempoChecagemStuck = tick()
                     end
 
-                    if tick() - tempoInicioWhileLoop > 3.5 then break end
+                    if tick() - tempoInicio > 3.0 then break end -- Segurança pro script não travar
                     task.wait() 
-                end
-
-                if chegouNoAlvo then break end
-                
-                local dist2D = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
-                if dist2D <= 3.0 then
-                    hum:MoveTo(hrp.Position)
-                    chegouNoAlvo = true
-                    break
                 end
             end
 
-            if chegouNoAlvo or (hrp.Position - targetPos).Magnitude < 7 then
-                LogSD("✅ Posicionado e pronto a interagir!")
+            -- Acabou de andar por todos os pontos. Verifica se chegou de fato!
+            local distCheckFinal = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
+            if distCheckFinal < 7 then
+                LogSD("✅ Posicionado e pronto para interagir!")
                 return true
             else
-                LogSD("🚨 Não chegou perto o suficiente. A recalcular...")
+                LogSD("🚨 Caiu longe do alvo. Recalculando...")
             end
 
         else
-            LogSD("🚨 Caminho bloqueado pelo labirinto de paredes! A tentar novamente...")
+            LogSD("🚨 Caminho bloqueado pelo labirinto de paredes! Tentando dnv...")
             task.wait(1) 
         end
     end
