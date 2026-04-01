@@ -79,7 +79,7 @@ function SmartDoor.Cancelar()
 end
 
 -- ==========================================
--- 👁️ LEITOR DE PLACAS DA PORTA (OTIMIZADO)
+-- 👁️ LEITOR DE PLACAS DA PORTA
 -- ==========================================
 local function LerTextoDaInterface()
     local PlayerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
@@ -136,12 +136,12 @@ function SmartDoor.IrPara(destino)
         AlterarFantasmas("LIGAR")
         if typeof(destino) == "Instance" then TransformarAlvoEmFantasma(destino, "LIGAR") end
 
-        -- GPS OTIMIZADO PARA FLUIDEZ: Waypoints mais longe um do outro!
+        -- LÓGICA CORRIGIDA: Boneco fino e distâncias curtas para não falhar nas portas
         local path = PathfindingService:CreatePath({
-            AgentRadius = 1.0, 
-            AgentHeight = 5, 
+            AgentRadius = 0.1, 
+            AgentHeight = 4, 
             AgentCanJump = true, 
-            WaypointSpacing = 5 
+            WaypointSpacing = 3 
         })
 
         local success, err = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
@@ -149,83 +149,88 @@ function SmartDoor.IrPara(destino)
         AlterarFantasmas("DESLIGAR")
         if typeof(destino) == "Instance" then TransformarAlvoEmFantasma(destino, "DESLIGAR") end
 
+        local waypoints = {}
+        
+        -- SISTEMA FALLBACK: Se o GPS falhar (ex: na areia do quintal), ele vai em linha reta
         if success and (path.Status == Enum.PathStatus.Success or path.Status == Enum.PathStatus.ClosestNoPath) then
-            local waypoints = path:GetWaypoints()
-            LogSD("✅ Rota encontrada! Correndo fluido...")
+            waypoints = path:GetWaypoints()
+            LogSD("✅ Rota encontrada pelo GPS!")
+        else
+            LogSD("⚠️ GPS falhou. Forçando caminhada em linha reta!")
+            waypoints = {
+                PathWaypoint.new(targetPos, Enum.PathWaypointAction.Walk)
+            }
+        end
 
-            for i, wp in ipairs(waypoints) do
+        for i, wp in ipairs(waypoints) do
+            if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
+            
+            if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
+
+            hum:MoveTo(wp.Position) 
+            local tempoInicio = tick()
+            local lastPos = hrp.Position
+            local tempoChecagemStuck = tick()
+
+            while (hrp.Position - wp.Position).Magnitude > 2.0 do
                 if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
                 
-                if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
-
-                -- Dá a ordem de andar para o próximo ponto
-                hum:MoveTo(wp.Position) 
-
-                local tempoInicio = tick()
-
-                -- Raio de transição mais largo (3.5) faz ele não parar nos pontos, criando fluidez!
-                while (hrp.Position - wp.Position).Magnitude > 3.5 do
-                    if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
-                    
-                    -- SENSOR DE CHEGADA (Para a 3 studs do fogão/geladeira)
-                    local distFinal = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
-                    if distFinal <= 3.0 then
-                        LogSD("🎯 Chegou no alvo final!")
-                        hum:MoveTo(hrp.Position) -- Freio de mão final
-                        return true
-                    end
-
-                    -- LÓGICA PERFEITA DA PORTA: Só se preocupa se a UI gritar "OPEN"
-                    local textoUI = LerTextoDaInterface()
-                    
-                    if textoUI and (string.find(textoUI, "open") or string.find(textoUI, "abrir")) then
-                        LogSD("🚪 Porta trancada detectada! Puxando freio...")
-                        hum:MoveTo(hrp.Position) -- Freia apenas na frente da porta
-                        
-                        local tempoTentando = tick()
-                        while tick() - tempoTentando < 5 do
-                            if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
-                            
-                            local statusAtual = LerTextoDaInterface()
-                            
-                            -- Se virou CLOSE ou sumiu (porque abriu), segue a vida!
-                            if not statusAtual or string.find(statusAtual, "close") or string.find(statusAtual, "fechar") then
-                                LogSD("🔓 Caminho livre! Voltando a correr...")
-                                break
-                            elseif string.find(statusAtual, "open") or string.find(statusAtual, "abrir") then
-                                -- Manda bala no E
-                                if tick() - lastDoorClick > 0.5 then
-                                    lastDoorClick = tick()
-                                    task.spawn(function()
-                                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                                        task.wait(0.1)
-                                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-                                    end)
-                                end
-                            end
-                            task.wait(0.1)
-                        end
-                        -- Porta resolvida, retoma a corrida para o waypoint
-                        hum:MoveTo(wp.Position) 
-                    end
-
-                    if tick() - tempoInicio > 3.0 then break end -- Segurança pro script não travar
-                    task.wait() 
+                local distFinal = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
+                if distFinal <= 3.0 then
+                    LogSD("🎯 Chegou no alvo final!")
+                    hum:MoveTo(hrp.Position) 
+                    return true
                 end
-            end
 
-            -- Acabou a rota. Confere se parou no lugar certo
-            local distCheckFinal = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
-            if distCheckFinal < 7 then
-                LogSD("✅ Posicionado e pronto para interagir!")
-                return true
-            else
-                LogSD("🚨 Caiu longe do alvo. Recalculando...")
-            end
+                local textoUI = LerTextoDaInterface()
+                if textoUI and (string.find(textoUI, "open") or string.find(textoUI, "abrir")) then
+                    LogSD("🚪 Porta trancada detectada! Puxando freio...")
+                    hum:MoveTo(hrp.Position) 
+                    
+                    local tempoTentando = tick()
+                    while tick() - tempoTentando < 5 do
+                        if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
+                        
+                        local statusAtual = LerTextoDaInterface()
+                        
+                        if not statusAtual or string.find(statusAtual, "close") or string.find(statusAtual, "fechar") then
+                            LogSD("🔓 Caminho livre! Voltando a correr...")
+                            break
+                        elseif string.find(statusAtual, "open") or string.find(statusAtual, "abrir") then
+                            if tick() - lastDoorClick > 0.5 then
+                                lastDoorClick = tick()
+                                task.spawn(function()
+                                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                                    task.wait(0.1)
+                                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                                end)
+                            end
+                        end
+                        task.wait(0.1)
+                    end
+                    hum:MoveTo(wp.Position) 
+                end
 
+                if tick() - tempoChecagemStuck > 0.5 then
+                    if (hrp.Position - lastPos).Magnitude < 0.5 then 
+                        hum.Jump = true 
+                        hum:MoveTo(wp.Position)
+                    end
+                    lastPos = hrp.Position
+                    tempoChecagemStuck = tick()
+                end
+
+                if tick() - tempoInicio > 3.0 then break end
+                task.wait() 
+            end
+        end
+
+        local distCheckFinal = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
+        if distCheckFinal < 7 then
+            LogSD("✅ Posicionado e pronto para interagir!")
+            return true
         else
-            LogSD("🚨 Caminho bloqueado pelo labirinto de paredes! Tentando dnv...")
-            task.wait(1) 
+            LogSD("🚨 Caiu longe do alvo. Recalculando...")
         end
     end
 
