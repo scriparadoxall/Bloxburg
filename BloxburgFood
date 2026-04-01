@@ -12,8 +12,9 @@ local isRunning = false
 local currentMacroId = 0
 local selectedFood = "Hot Dogs"
 
--- Variável para guardar o módulo do GitHub e não precisar baixar toda hora
+-- Caches para não baixar do GitHub toda hora e causar lag
 local smartSearchCache = nil
+local smartCamCache = nil
 
 local validActions = {
     "fry", "bake", "cook", "prepare", "stir", "mix", "chop", 
@@ -75,25 +76,14 @@ local function SafeClick(element)
     return success
 end
 
-local function AimAtObject(obj)
-    local targetPos = obj:GetPivot().Position
-    local lookTarget = targetPos + Vector3.new(0, -0.5, 0) 
-    local tween = TweenService:Create(Camera, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {CFrame = CFrame.lookAt(Camera.CFrame.Position, lookTarget)})
-    tween:Play()
-    task.wait(0.5)
-end
-
 -- =========================================================================
--- NOVA LÓGICA DE MOVIMENTO USANDO O GITHUB (smartSearch)
+-- GERENCIADORES DE MÓDULOS (GITHUB)
 -- =========================================================================
 local function GetSmartSearch()
     if smartSearchCache then return smartSearchCache end
-    
     local success, result = pcall(function()
-        local moduleUrl = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/smartSearch"
-        return loadstring(game:HttpGet(moduleUrl))()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/smartSearch"))()
     end)
-    
     if success and result and type(result.Find) == "function" then
         smartSearchCache = result
         return smartSearchCache
@@ -101,16 +91,33 @@ local function GetSmartSearch()
     return nil
 end
 
+local function GetSmartCam()
+    if smartCamCache then return smartCamCache end
+    local success, result = pcall(function()
+        -- Tenta baixar com .lua ou sem, dependendo de como você salvou no Git
+        local url = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/smart_cam"
+        local code = game:HttpGet(url .. ".lua")
+        if string.find(code, "404: Not Found") then code = game:HttpGet(url) end
+        return loadstring(code)()
+    end)
+    
+    if success and result and type(result.OlharPara) == "function" then
+        smartCamCache = result
+        return smartCamCache
+    end
+    return nil
+end
+
 local function MoveToStation(stationType)
     local searcher = GetSmartSearch()
-    
+
     if not searcher then 
         Log("ERRO: Falha ao carregar o módulo smartSearch do GitHub!", Color3.fromRGB(255, 50, 50))
         return false 
     end
 
     local obj, part, dist = searcher.Find(stationType)
-    
+
     if not obj or not part then 
         Log("ERRO: Nenhuma estação do tipo '" .. stationType .. "' encontrada acessível!", Color3.fromRGB(255, 100, 100))
         return false 
@@ -121,15 +128,20 @@ local function MoveToStation(stationType)
         return false
     end
 
-    -- Manda o bot andar exatamente para a porta encontrada pelo smartSearch
     local chegou_no_destino = _G.SmartDoor.IrPara(part)
 
     if chegou_no_destino then
         local hrp = LocalPlayer.Character.HumanoidRootPart
         local targetPos = part.Position
 
+        -- Vira o corpo do boneco de frente para o móvel
         hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
-        AimAtObject(obj) -- Mira na estrutura geral
+        
+        -- Chama a Câmera Humana no Ombro mirando na peça exata!
+        local camModule = GetSmartCam()
+        if camModule then
+            camModule.OlharPara(part, 0.5)
+        end
 
         task.wait(0.2)
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
