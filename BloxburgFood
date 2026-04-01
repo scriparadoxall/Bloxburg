@@ -12,10 +12,38 @@ local isRunning = false
 local currentMacroId = 0
 local selectedFood = "Hot Dogs"
 
--- Caches para não baixar do GitHub toda hora e causar lag
-local smartSearchCache = nil
-local smartCamCache = nil
+-- =========================================================================
+-- 📦 GERENCIADOR DE MÓDULOS (BAIXA TUDO DO GITHUB AUTOMATICAMENTE)
+-- =========================================================================
+local ModulosCarregados = {}
 
+local function CarregarModulo(nomeDoArquivo)
+    -- Se já baixou antes, não baixa de novo (evita lag)
+    if ModulosCarregados[nomeDoArquivo] then return ModulosCarregados[nomeDoArquivo] end
+
+    local urlBase = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/"
+    
+    local success, result = pcall(function()
+        -- Tenta baixar COM .lua no final
+        local code = game:HttpGet(urlBase .. nomeDoArquivo .. ".lua")
+        -- Se der erro 404, tenta baixar SEM .lua
+        if string.find(code, "404: Not Found") then 
+            code = game:HttpGet(urlBase .. nomeDoArquivo) 
+        end
+        return loadstring(code)()
+    end)
+
+    if success and result then
+        ModulosCarregados[nomeDoArquivo] = result
+        return result
+    else
+        return nil
+    end
+end
+
+-- =========================================================================
+-- CONFIGURAÇÕES DE AÇÕES
+-- =========================================================================
 local validActions = {
     "fry", "bake", "cook", "prepare", "stir", "mix", "chop", 
     "cut", "pour", "form", "garnish", "boil", "add", "blend",
@@ -77,70 +105,44 @@ local function SafeClick(element)
 end
 
 -- =========================================================================
--- GERENCIADORES DE MÓDULOS (GITHUB)
+-- 🧠 INTEGRAÇÃO COM CÉREBRO, PERNAS E CÂMERA
 -- =========================================================================
-local function GetSmartSearch()
-    if smartSearchCache then return smartSearchCache end
-    local success, result = pcall(function()
-        return loadstring(game:HttpGet("https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/smartSearch"))()
-    end)
-    if success and result and type(result.Find) == "function" then
-        smartSearchCache = result
-        return smartSearchCache
-    end
-    return nil
-end
-
-local function GetSmartCam()
-    if smartCamCache then return smartCamCache end
-    local success, result = pcall(function()
-        -- Tenta baixar com .lua ou sem, dependendo de como você salvou no Git
-        local url = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/smart_cam"
-        local code = game:HttpGet(url .. ".lua")
-        if string.find(code, "404: Not Found") then code = game:HttpGet(url) end
-        return loadstring(code)()
-    end)
-    
-    if success and result and type(result.OlharPara) == "function" then
-        smartCamCache = result
-        return smartCamCache
-    end
-    return nil
-end
-
 local function MoveToStation(stationType)
-    local searcher = GetSmartSearch()
-
+    -- 1. Pega o Cérebro
+    local searcher = CarregarModulo("smartSearch")
     if not searcher then 
-        Log("ERRO: Falha ao carregar o módulo smartSearch do GitHub!", Color3.fromRGB(255, 50, 50))
+        Log("ERRO: Falha ao carregar smartSearch!", Color3.fromRGB(255, 50, 50))
         return false 
     end
 
+    -- 2. Acha o alvo
     local obj, part, dist = searcher.Find(stationType)
-
     if not obj or not part then 
-        Log("ERRO: Nenhuma estação do tipo '" .. stationType .. "' encontrada acessível!", Color3.fromRGB(255, 100, 100))
+        Log("ERRO: Nenhuma '" .. stationType .. "' acessível!", Color3.fromRGB(255, 100, 100))
         return false 
     end
 
-    if type(_G.SmartDoor) ~= "table" or type(_G.SmartDoor.IrPara) ~= "function" then
-        Log("ERRO: Módulo SmartDoor não encontrado! Execute o Hub.", Color3.fromRGB(255, 50, 50))
+    -- 3. Pega as Pernas
+    local doorSystem = CarregarModulo("smart_door")
+    if not doorSystem then
+        Log("ERRO: Falha ao carregar smart_door!", Color3.fromRGB(255, 50, 50))
         return false
     end
 
-    local chegou_no_destino = _G.SmartDoor.IrPara(part)
+    -- 4. Anda até lá desviando das portas
+    local chegou_no_destino = doorSystem.IrPara(part)
 
     if chegou_no_destino then
         local hrp = LocalPlayer.Character.HumanoidRootPart
         local targetPos = part.Position
 
-        -- Vira o corpo do boneco de frente para o móvel
+        -- Vira o corpo pra frente do móvel
         hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
         
-        -- Chama a Câmera Humana no Ombro mirando na peça exata!
-        local camModule = GetSmartCam()
-        if camModule then
-            camModule.OlharPara(part, 0.5)
+        -- 5. Pega a Câmera Humana e foca na porta do móvel por cima do ombro
+        local camSystem = CarregarModulo("smart_cam")
+        if camSystem then
+            camSystem.OlharPara(part, 0.5)
         end
 
         task.wait(0.2)
@@ -286,7 +288,7 @@ function _G.BloxburgChef.Start(food)
                     end
 
                     if listMenu and listMenu.Enabled then
-                        Log("Menu aberto. Chamando módulo externo para pegar: " .. selectedFood, Color3.fromRGB(200, 200, 200))
+                        Log("Menu aberto. Pegando ingrediente...", Color3.fromRGB(200, 200, 200))
                         task.wait(0.5) 
 
                         pcall(function()
@@ -297,8 +299,6 @@ function _G.BloxburgChef.Start(food)
                                 local foodModule = getScript()
                                 if type(foodModule) == "table" and type(foodModule.Pegar) == "function" then
                                     foodModule.Pegar(selectedFood)
-                                else
-                                    Log("Aviso: Módulo falhou.", Color3.fromRGB(255, 100, 100))
                                 end
                             end
                         end)
@@ -323,6 +323,9 @@ function _G.BloxburgChef.Start(food)
                         Log("Geladeira não encontrada ou bloqueada!", Color3.fromRGB(255, 50, 50))
                         task.wait(3)
                     end
+                else
+                    -- Se falhou ao ir até a geladeira (não achou o módulo ou o caminho), espera 2 segundos pra não travar o Roblox
+                    task.wait(2)
                 end
             end
 
@@ -362,6 +365,8 @@ function _G.BloxburgChef.Start(food)
                         end
 
                         cookingStatus = MonitorAndCook(actText)
+                    else
+                        task.wait(2) -- Se falhou, espera pra não travar
                     end
                 else
                      task.wait(0.5)
@@ -375,8 +380,9 @@ function _G.BloxburgChef.Stop()
     isRunning = false
     currentMacroId = currentMacroId + 1
 
-    if type(_G.SmartDoor) == "table" and type(_G.SmartDoor.Cancelar) == "function" then
-        _G.SmartDoor.Cancelar()
+    local doorSystem = CarregarModulo("smart_door")
+    if doorSystem and type(doorSystem.Cancelar) == "function" then
+        doorSystem.Cancelar()
     end
 
     local player = game:GetService("Players").LocalPlayer
