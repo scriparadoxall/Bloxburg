@@ -13,30 +13,30 @@ local currentMacroId = 0
 local selectedFood = "Hot Dogs"
 
 -- =========================================================================
--- 📦 GERENCIADOR DE MÓDULOS (BAIXA TUDO DO GITHUB AUTOMATICAMENTE)
+-- 📦 GERENCIADOR DE MÓDULOS (Nomes Exatos Baseados na Foto do GitHub)
 -- =========================================================================
 local ModulosCarregados = {}
 
-local function CarregarModulo(nomeDoArquivo)
-    -- Se já baixou antes, não baixa de novo (evita lag)
-    if ModulosCarregados[nomeDoArquivo] then return ModulosCarregados[nomeDoArquivo] end
+local function CarregarModulo(nomeExato)
+    -- Se já baixou, usa do cache para não dar lag e não tomar block do GitHub
+    if ModulosCarregados[nomeExato] then return ModulosCarregados[nomeExato] end
 
-    local urlBase = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/"
+    local url = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/" .. nomeExato
     
     local success, result = pcall(function()
-        -- Tenta baixar COM .lua no final
-        local code = game:HttpGet(urlBase .. nomeDoArquivo .. ".lua")
-        -- Se der erro 404, tenta baixar SEM .lua
-        if string.find(code, "404: Not Found") then 
-            code = game:HttpGet(urlBase .. nomeDoArquivo) 
+        local code = game:HttpGet(url)
+        local func = loadstring(code)
+        if func then
+            return func()
         end
-        return loadstring(code)()
+        return nil
     end)
 
     if success and result then
-        ModulosCarregados[nomeDoArquivo] = result
+        ModulosCarregados[nomeExato] = result
         return result
     else
+        warn("Erro ao tentar baixar o módulo: " .. nomeExato)
         return nil
     end
 end
@@ -108,7 +108,7 @@ end
 -- 🧠 INTEGRAÇÃO COM CÉREBRO, PERNAS E CÂMERA
 -- =========================================================================
 local function MoveToStation(stationType)
-    -- 1. Pega o Cérebro
+    -- 1. Pega o Cérebro com o nome exato
     local searcher = CarregarModulo("smartSearch")
     if not searcher then 
         Log("ERRO: Falha ao carregar smartSearch!", Color3.fromRGB(255, 50, 50))
@@ -122,8 +122,8 @@ local function MoveToStation(stationType)
         return false 
     end
 
-    -- 3. Pega as Pernas
-    local doorSystem = CarregarModulo("smart_door")
+    -- 3. Pega as Pernas com o nome exato
+    local doorSystem = CarregarModulo("smart_door.lua")
     if not doorSystem then
         Log("ERRO: Falha ao carregar smart_door!", Color3.fromRGB(255, 50, 50))
         return false
@@ -139,7 +139,7 @@ local function MoveToStation(stationType)
         -- Vira o corpo pra frente do móvel
         hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
         
-        -- 5. Pega a Câmera Humana e foca na porta do móvel por cima do ombro
+        -- 5. Pega a Câmera Humana com o nome exato
         local camSystem = CarregarModulo("smart_cam")
         if camSystem then
             camSystem.OlharPara(part, 0.5)
@@ -324,7 +324,6 @@ function _G.BloxburgChef.Start(food)
                         task.wait(3)
                     end
                 else
-                    -- Se falhou ao ir até a geladeira (não achou o módulo ou o caminho), espera 2 segundos pra não travar o Roblox
                     task.wait(2)
                 end
             end
@@ -366,7 +365,7 @@ function _G.BloxburgChef.Start(food)
 
                         cookingStatus = MonitorAndCook(actText)
                     else
-                        task.wait(2) -- Se falhou, espera pra não travar
+                        task.wait(2) 
                     end
                 else
                      task.wait(0.5)
@@ -380,7 +379,7 @@ function _G.BloxburgChef.Stop()
     isRunning = false
     currentMacroId = currentMacroId + 1
 
-    local doorSystem = CarregarModulo("smart_door")
+    local doorSystem = CarregarModulo("smart_door.lua")
     if doorSystem and type(doorSystem.Cancelar) == "function" then
         doorSystem.Cancelar()
     end
