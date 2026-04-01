@@ -22,7 +22,7 @@ local function GetInteractionPart(obj)
                   or objectModel:FindFirstChild("Door")
                   or objectModel:FindFirstChild("Handle") 
                   or objectModel:FindFirstChild("Top") 
-        
+
         if door then
             if door:IsA("Model") then
                 return door.PrimaryPart or door:FindFirstChildWhichIsA("BasePart", true) or door
@@ -49,7 +49,7 @@ local function AcharMovelMaisPerto(tipoMovel)
             for _, obj in pairs(plot.House.Counters:GetChildren()) do
                 local nome = string.lower(obj.Name)
                 local match = false
-                
+
                 if tipoMovel == "geladeira" and (string.find(nome, "fridge") or string.find(nome, "refrigerator")) then match = true
                 elseif tipoMovel == "fogao" and (string.find(nome, "stove") or string.find(nome, "oven")) then match = true
                 elseif tipoMovel == "bancada" and (string.find(nome, "counter") or string.find(nome, "island")) then match = true
@@ -72,23 +72,24 @@ local function AcharMovelMaisPerto(tipoMovel)
 end
 
 -- ==========================================
--- 🎥 LÓGICA DA CÂMERA NAS COSTAS DO PERSONAGEM
+-- 🎥 LÓGICA DA CÂMERA (POR CIMA DO OMBRO)
 -- ==========================================
 local function MoverCameraSuave(alvoPart)
     local char = LocalPlayer.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
     local hrp = char.HumanoidRootPart
-    
-    -- MATEMÁTICA DAS COSTAS: 
-    -- PointToWorldSpace usa a rotação atual do boneco. 
-    -- O Vector3 é (X=0, Y=3 studs pra cima, Z=10 studs pra trás das costas)
-    local posicaoNasCostas = hrp.CFrame:PointToWorldSpace(Vector3.new(0, 3, 10))
-    
-    -- Onde a câmera deve focar (Um pouco abaixo do topo do móvel para pegar a UI)
-    local alvoPos = alvoPart.Position - Vector3.new(0, alvoPart.Size.Y * 0.2, 0)
-    
-    -- Cria a posição da câmera: Fica nas costas, mas olha para o fogão
-    local cframeDesejado = CFrame.lookAt(posicaoNasCostas, alvoPos)
+
+    -- MATEMÁTICA DO OMBRO: 
+    -- X = 2.5 (Para a direita do corpo)
+    -- Y = 2.5 (Para cima da cabeça)
+    -- Z = 8.0 (Para trás)
+    local posicaoNoOmbro = hrp.CFrame:PointToWorldSpace(Vector3.new(2.5, 2.5, 8))
+
+    -- Foca exatamente na porta/tampo para o jogo não esconder o botão
+    local alvoPos = alvoPart:IsA("Model") and alvoPart:GetPivot().Position or alvoPart.Position
+
+    -- Cria a posição da câmera olhando pro alvo
+    local cframeDesejado = CFrame.lookAt(posicaoNoOmbro, alvoPos)
 
     local tweenInfo = TweenInfo.new(
         0.5, 
@@ -101,6 +102,9 @@ local function MoverCameraSuave(alvoPart)
     local tween = TweenService:Create(Camera, tweenInfo, {CFrame = cframeDesejado})
     tween:Play()
     tween.Completed:Wait()
+
+    -- Força o foco da câmera no alvo para o Bloxburg reconhecer a intenção de interagir!
+    Camera.Focus = CFrame.new(alvoPos)
 
     -- Devolve o controle pro jogador girar se quiser
     Camera.CameraType = Enum.CameraType.Custom
@@ -163,7 +167,7 @@ local function CriarBotao(texto, tipo)
     btn.MouseButton1Click:Connect(function()
         btn.Text = "Mirando..."
         local alvoPart = AcharMovelMaisPerto(tipo)
-        
+
         if alvoPart then
             MoverCameraSuave(alvoPart)
             btn.Text = texto
