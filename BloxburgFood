@@ -12,38 +12,9 @@ local isRunning = false
 local currentMacroId = 0
 local selectedFood = "Hot Dogs"
 
--- =========================================================================
--- 📦 GERENCIADOR DE MÓDULOS (Nomes Exatos Baseados na Foto do GitHub)
--- =========================================================================
-local ModulosCarregados = {}
+-- Variável para guardar o módulo do GitHub e não precisar baixar toda hora
+local smartSearchCache = nil
 
-local function CarregarModulo(nomeExato)
-    -- Se já baixou, usa do cache para não dar lag e não tomar block do GitHub
-    if ModulosCarregados[nomeExato] then return ModulosCarregados[nomeExato] end
-
-    local url = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/" .. nomeExato
-    
-    local success, result = pcall(function()
-        local code = game:HttpGet(url)
-        local func = loadstring(code)
-        if func then
-            return func()
-        end
-        return nil
-    end)
-
-    if success and result then
-        ModulosCarregados[nomeExato] = result
-        return result
-    else
-        warn("Erro ao tentar baixar o módulo: " .. nomeExato)
-        return nil
-    end
-end
-
--- =========================================================================
--- CONFIGURAÇÕES DE AÇÕES
--- =========================================================================
 local validActions = {
     "fry", "bake", "cook", "prepare", "stir", "mix", "chop", 
     "cut", "pour", "form", "garnish", "boil", "add", "blend",
@@ -104,46 +75,61 @@ local function SafeClick(element)
     return success
 end
 
+local function AimAtObject(obj)
+    local targetPos = obj:GetPivot().Position
+    local lookTarget = targetPos + Vector3.new(0, -0.5, 0) 
+    local tween = TweenService:Create(Camera, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {CFrame = CFrame.lookAt(Camera.CFrame.Position, lookTarget)})
+    tween:Play()
+    task.wait(0.5)
+end
+
 -- =========================================================================
--- 🧠 INTEGRAÇÃO COM CÉREBRO, PERNAS E CÂMERA
+-- NOVA LÓGICA DE MOVIMENTO USANDO O GITHUB (smartSearch)
 -- =========================================================================
+local function GetSmartSearch()
+    if smartSearchCache then return smartSearchCache end
+    
+    local success, result = pcall(function()
+        local moduleUrl = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/smartSearch"
+        return loadstring(game:HttpGet(moduleUrl))()
+    end)
+    
+    if success and result and type(result.Find) == "function" then
+        smartSearchCache = result
+        return smartSearchCache
+    end
+    return nil
+end
+
 local function MoveToStation(stationType)
-    -- 1. Pega o Cérebro com o nome exato
-    local searcher = CarregarModulo("smartSearch")
+    local searcher = GetSmartSearch()
+    
     if not searcher then 
-        Log("ERRO: Falha ao carregar smartSearch!", Color3.fromRGB(255, 50, 50))
+        Log("ERRO: Falha ao carregar o módulo smartSearch do GitHub!", Color3.fromRGB(255, 50, 50))
         return false 
     end
 
-    -- 2. Acha o alvo
     local obj, part, dist = searcher.Find(stationType)
+    
     if not obj or not part then 
-        Log("ERRO: Nenhuma '" .. stationType .. "' acessível!", Color3.fromRGB(255, 100, 100))
+        Log("ERRO: Nenhuma estação do tipo '" .. stationType .. "' encontrada acessível!", Color3.fromRGB(255, 100, 100))
         return false 
     end
 
-    -- 3. Pega as Pernas com o nome exato
-    local doorSystem = CarregarModulo("smart_door.lua")
-    if not doorSystem then
-        Log("ERRO: Falha ao carregar smart_door!", Color3.fromRGB(255, 50, 50))
+    if type(_G.SmartDoor) ~= "table" or type(_G.SmartDoor.IrPara) ~= "function" then
+        Log("ERRO: Módulo SmartDoor não encontrado! Execute o Hub.", Color3.fromRGB(255, 50, 50))
         return false
     end
 
-    -- 4. Anda até lá desviando das portas
-    local chegou_no_destino = doorSystem.IrPara(part)
+    -- Manda o bot andar exatamente para a porta encontrada pelo smartSearch
+    local chegou_no_destino = _G.SmartDoor.IrPara(part)
 
     if chegou_no_destino then
         local hrp = LocalPlayer.Character.HumanoidRootPart
         local targetPos = part.Position
 
-        -- Vira o corpo pra frente do móvel
         hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
-        
-        -- 5. Pega a Câmera Humana com o nome exato
-        local camSystem = CarregarModulo("smart_cam")
-        if camSystem then
-            camSystem.OlharPara(part, 0.5)
-        end
+        AimAtObject(obj) -- Mira na estrutura geral
 
         task.wait(0.2)
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
@@ -288,7 +274,7 @@ function _G.BloxburgChef.Start(food)
                     end
 
                     if listMenu and listMenu.Enabled then
-                        Log("Menu aberto. Pegando ingrediente...", Color3.fromRGB(200, 200, 200))
+                        Log("Menu aberto. Chamando módulo externo para pegar: " .. selectedFood, Color3.fromRGB(200, 200, 200))
                         task.wait(0.5) 
 
                         pcall(function()
@@ -299,6 +285,8 @@ function _G.BloxburgChef.Start(food)
                                 local foodModule = getScript()
                                 if type(foodModule) == "table" and type(foodModule.Pegar) == "function" then
                                     foodModule.Pegar(selectedFood)
+                                else
+                                    Log("Aviso: Módulo falhou.", Color3.fromRGB(255, 100, 100))
                                 end
                             end
                         end)
@@ -323,8 +311,6 @@ function _G.BloxburgChef.Start(food)
                         Log("Geladeira não encontrada ou bloqueada!", Color3.fromRGB(255, 50, 50))
                         task.wait(3)
                     end
-                else
-                    task.wait(2)
                 end
             end
 
@@ -364,8 +350,6 @@ function _G.BloxburgChef.Start(food)
                         end
 
                         cookingStatus = MonitorAndCook(actText)
-                    else
-                        task.wait(2) 
                     end
                 else
                      task.wait(0.5)
@@ -379,9 +363,8 @@ function _G.BloxburgChef.Stop()
     isRunning = false
     currentMacroId = currentMacroId + 1
 
-    local doorSystem = CarregarModulo("smart_door.lua")
-    if doorSystem and type(doorSystem.Cancelar) == "function" then
-        doorSystem.Cancelar()
+    if type(_G.SmartDoor) == "table" and type(_G.SmartDoor.Cancelar) == "function" then
+        _G.SmartDoor.Cancelar()
     end
 
     local player = game:GetService("Players").LocalPlayer
