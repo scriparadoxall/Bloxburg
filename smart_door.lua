@@ -136,12 +136,12 @@ function SmartDoor.IrPara(destino)
         AlterarFantasmas("LIGAR")
         if typeof(destino) == "Instance" then TransformarAlvoEmFantasma(destino, "LIGAR") end
 
-        -- LÓGICA CORRIGIDA: Boneco fino e distâncias curtas para não falhar nas portas
+        -- LÓGICA FLUIDA E FINA: Radius 0.1 pra não bugar nas portas, WaypointSpacing 4 pra passos longos e fluidos
         local path = PathfindingService:CreatePath({
             AgentRadius = 0.1, 
             AgentHeight = 4, 
             AgentCanJump = true, 
-            WaypointSpacing = 3 
+            WaypointSpacing = 4 
         })
 
         local success, err = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
@@ -151,7 +151,7 @@ function SmartDoor.IrPara(destino)
 
         local waypoints = {}
         
-        -- SISTEMA FALLBACK: Se o GPS falhar (ex: na areia do quintal), ele vai em linha reta
+        -- SISTEMA FALLBACK (Corrige o erro do quintal/areia sem NavMesh)
         if success and (path.Status == Enum.PathStatus.Success or path.Status == Enum.PathStatus.ClosestNoPath) then
             waypoints = path:GetWaypoints()
             LogSD("✅ Rota encontrada pelo GPS!")
@@ -167,16 +167,20 @@ function SmartDoor.IrPara(destino)
             
             if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
 
+            -- MANDAR ANDAR UMA ÚNICA VEZ POR PONTO (Isso evita os engasgos da engine)
             hum:MoveTo(wp.Position) 
+            
             local tempoInicio = tick()
             local lastPos = hrp.Position
             local tempoChecagemStuck = tick()
 
-            while (hrp.Position - wp.Position).Magnitude > 2.0 do
+            -- Distância > 4.0: Ele "corta caminho" pro próximo ponto sem parar 100% no anterior
+            while (hrp.Position - wp.Position).Magnitude > 4.0 do
                 if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
                 
+                -- Check Final de Proximidade (3.5 studs de distância da peça exata)
                 local distFinal = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
-                if distFinal <= 3.0 then
+                if distFinal <= 3.5 then
                     LogSD("🎯 Chegou no alvo final!")
                     hum:MoveTo(hrp.Position) 
                     return true
@@ -208,11 +212,13 @@ function SmartDoor.IrPara(destino)
                         end
                         task.wait(0.1)
                     end
+                    -- Retoma o movimento após a porta abrir
                     hum:MoveTo(wp.Position) 
                 end
 
-                if tick() - tempoChecagemStuck > 0.5 then
-                    if (hrp.Position - lastPos).Magnitude < 0.5 then 
+                -- Sistema Anti-Travar na Parede
+                if tick() - tempoChecagemStuck > 0.8 then
+                    if (hrp.Position - lastPos).Magnitude < 1 then 
                         hum.Jump = true 
                         hum:MoveTo(wp.Position)
                     end
@@ -221,7 +227,9 @@ function SmartDoor.IrPara(destino)
                 end
 
                 if tick() - tempoInicio > 3.0 then break end
-                task.wait() 
+                
+                -- THROTTLE PARA FLUIDEZ: Processa a lógica só 10x por segundo, liberando o jogo para andar liso
+                task.wait(0.1) 
             end
         end
 
