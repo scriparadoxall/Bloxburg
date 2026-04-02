@@ -10,59 +10,52 @@ local function LogSD(msg)
     if _G.BloxburgChef_AddLog then
         _G.BloxburgChef_AddLog(msg, Color3.fromRGB(255, 170, 0))
     else
-        print(msg)
+        print("[SmartDoor] " .. msg)
     end
 end
 
 -- ==========================================
--- 🚪 GERENCIAMENTO DOS FANTASMAS (MUITO MAIS AGRESSIVO)
+-- 🚪 LEITOR DA INTERFACE (CAMINHO EXATO QUE VOCÊ PASSOU)
 -- ==========================================
--- Isso garante que o GPS veja QUALQUER porta da casa como um espaço vazio que ele pode atravessar
+local function LerStatusDaPorta()
+    local player = Players.LocalPlayer
+    local success, result = pcall(function()
+        -- Usando o caminho que você forneceu
+        local ui = player.PlayerGui._interactUI.InteractIndicator.TextLabel
+        return string.lower(ui.Text)
+    end)
+    
+    if success then return result end
+    return nil
+end
+
+-- ==========================================
+-- 👻 GPS: TRATAR PORTAS COMO AR (FANTASMAS)
+-- ==========================================
 local function AlterarFantasmas(estado)
     local plots = workspace:FindFirstChild("Plots")
     if not plots then return end
 
     for _, plot in pairs(plots:GetChildren()) do
-        for _, obj in pairs(plot:GetDescendants()) do
-            if obj:IsA("BasePart") then
-                local n = string.lower(obj.Name)
-                local pn = obj.Parent and string.lower(obj.Parent.Name) or ""
-                local ppn = obj.Parent and obj.Parent.Parent and string.lower(obj.Parent.Parent.Name) or ""
-                
-                -- Se a peça, o pai ou o avô dela tiver "door" ou "gate" no nome
-                if string.find(n, "door") or string.find(pn, "door") or string.find(ppn, "door") or string.find(n, "gate") or string.find(pn, "gate") then
-                    if estado == "LIGAR" then
-                        if not obj:FindFirstChild("IgnorarNoGPS") then
-                            local mod = Instance.new("PathfindingModifier")
-                            mod.Name = "IgnorarNoGPS"
-                            mod.PassThrough = true
-                            mod.Parent = obj
+        if plot:FindFirstChild("House") then
+            for _, obj in pairs(plot.House:GetDescendants()) do
+                if obj:IsA("Model") and (string.find(string.lower(obj.Name), "door") or string.find(string.lower(obj.Name), "gate")) then
+                    for _, part in pairs(obj:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            if estado == "LIGAR" then
+                                if not part:FindFirstChild("IgnorarNoGPS") then
+                                    local mod = Instance.new("PathfindingModifier")
+                                    mod.Name = "IgnorarNoGPS"
+                                    mod.PassThrough = true
+                                    mod.Parent = part
+                                end
+                            elseif estado == "DESLIGAR" then
+                                local mod = part:FindFirstChild("IgnorarNoGPS")
+                                if mod then mod:Destroy() end
+                            end
                         end
-                    elseif estado == "DESLIGAR" then
-                        local mod = obj:FindFirstChild("IgnorarNoGPS")
-                        if mod then mod:Destroy() end
                     end
                 end
-            end
-        end
-    end
-end
-
-local function TransformarAlvoEmFantasma(alvo, estado)
-    if not alvo then return end
-    local model = alvo:FindFirstAncestorWhichIsA("Model") or alvo
-    for _, part in pairs(model:GetDescendants()) do
-        if part:IsA("BasePart") then
-            if estado == "LIGAR" then
-                if not part:FindFirstChild("FantasmaAlvo") then
-                    local mod = Instance.new("PathfindingModifier")
-                    mod.Name = "FantasmaAlvo"
-                    mod.PassThrough = true
-                    mod.Parent = part
-                end
-            else
-                local mod = part:FindFirstChild("FantasmaAlvo")
-                if mod then mod:Destroy() end
             end
         end
     end
@@ -72,44 +65,7 @@ function SmartDoor.Cancelar()
     SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
     pcall(function()
         local char = Players.LocalPlayer.Character
-        if char and char:FindFirstChild("Humanoid") and char:FindFirstChild("HumanoidRootPart") then
-            char.Humanoid:MoveTo(char.HumanoidRootPart.Position)
-        end
-    end)
-end
-
--- ==========================================
--- 👁️ LEITOR DA PORTA E CLIQUE (MOBILE)
--- ==========================================
-local function LerTextoDaInterface()
-    local PlayerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
-    if not PlayerGui then return nil, nil end
-
-    local interactUI = PlayerGui:FindFirstChild("_interactUI")
-    if interactUI then
-        local indicator = interactUI:FindFirstChild("InteractIndicator")
-        local textLabel = indicator and indicator:FindFirstChild("TextLabel")
-        local button = nil
-
-        if not textLabel then
-            local center = interactUI:FindFirstChild("Center")
-            button = center and center:FindFirstChild("Button")
-            textLabel = button and button:FindFirstChild("TextLabel")
-        end
-
-        if textLabel and textLabel.Text ~= "" then
-            return string.lower(textLabel.Text), button
-        end
-    end
-    return nil, nil
-end
-
-local function ClicarNaUI(botao)
-    pcall(function()
-        if getconnections and botao then
-            for _, conn in pairs(getconnections(botao.MouseButton1Click)) do conn:Fire() end
-            for _, conn in pairs(getconnections(botao.Activated)) do conn:Fire() end
-        end
+        char.Humanoid:MoveTo(char.HumanoidRootPart.Position)
     end)
 end
 
@@ -119,125 +75,82 @@ function SmartDoor.IrPara(destino)
 
     local player = Players.LocalPlayer
     local char = player.Character
-    if not char or not char:FindFirstChild("Humanoid") or not char:FindFirstChild("HumanoidRootPart") then return false end
-
-    local hrp = char.HumanoidRootPart
+    if not char or not char:FindFirstChild("Humanoid") then return false end
     local hum = char.Humanoid
+    local hrp = char.HumanoidRootPart
 
     local targetPos = typeof(destino) == "Instance" and (destino:IsA("Model") and destino:GetPivot().Position or destino.Position) or destino
 
-    local maxTentativas = 4
-    local tentativaAtual = 0
+    -- 1. Faz o GPS ignorar as portas para calcular a rota "por dentro" delas
+    AlterarFantasmas("LIGAR")
+    
+    local path = PathfindingService:CreatePath({
+        AgentRadius = 0.5, -- Boneco fino para passar na porta
+        AgentHeight = 5,
+        AgentCanJump = true,
+        WaypointSpacing = 3
+    })
 
-    while tentativaAtual < maxTentativas do
-        if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
-        tentativaAtual = tentativaAtual + 1
-        LogSD("📍 Gerando rota (Tentativa " .. tentativaAtual .. ")...")
+    local success, _ = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
+    AlterarFantasmas("DESLIGAR") -- Volta o mundo ao normal para a física
 
-        AlterarFantasmas("LIGAR")
-        if typeof(destino) == "Instance" then TransformarAlvoEmFantasma(destino, "LIGAR") end
+    if not success or path.Status ~= Enum.PathStatus.Success then
+        LogSD("⚠️ Rota falhou. Indo em linha reta.")
+        hum:MoveTo(targetPos)
+        return false
+    end
 
-        local path = PathfindingService:CreatePath({
-            AgentRadius = 0.5, 
-            AgentHeight = 4, 
-            AgentCanJump = true, 
-            WaypointSpacing = 3.5 
-        })
+    local waypoints = path:GetWaypoints()
+    
+    for i, wp in ipairs(waypoints) do
+        if SmartDoor.CurrentWalkId ~= myWalkId then return false end
+        
+        hum:MoveTo(wp.Position)
 
-        local success, _ = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
-
-        AlterarFantasmas("DESLIGAR")
-        if typeof(destino) == "Instance" then TransformarAlvoEmFantasma(destino, "DESLIGAR") end
-
-        local waypoints = {}
-        if success and path.Status == Enum.PathStatus.Success then
-            waypoints = path:GetWaypoints()
-        else
-            waypoints = {PathWaypoint.new(targetPos, Enum.PathWaypointAction.Walk)}
-        end
-
-        local caminhoAbortado = false
-
-        for i, wp in ipairs(waypoints) do
-            if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
-            if caminhoAbortado then break end
+        -- Enquanto não chegar no ponto do GPS
+        while (hrp.Position - wp.Position).Magnitude > 3 do
+            if SmartDoor.CurrentWalkId ~= myWalkId then return false end
             
-            if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
-
-            hum:MoveTo(wp.Position) 
+            -- LÓGICA DA PORTA BASEADA NA SUA UI
+            local status = LerStatusDaPorta()
             
-            local tempoInicio = tick()
-            local lastPos = hrp.Position
-            local tempoChecagemStuck = tick()
-
-            while (hrp.Position - wp.Position).Magnitude > 3.0 do
-                if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
-
-                -- Lógica da Porta
-                local textoUI, botaoUI = LerTextoDaInterface()
-                if textoUI and (string.find(textoUI, "open") or string.find(textoUI, "abrir")) then
-                    hum:MoveTo(hrp.Position) 
-                    LogSD("🚪 Porta! Abrindo...")
-                    
-                    local tempoTentando = tick()
-                    while tick() - tempoTentando < 5 do
-                        if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
-                        
-                        local statusAtual, botaoAtual = LerTextoDaInterface()
-                        
-                        if not statusAtual or string.find(statusAtual, "close") or string.find(statusAtual, "fechar") then break end
-                        
-                        if string.find(statusAtual, "open") or string.find(statusAtual, "abrir") then
-                            if tick() - lastDoorClick > 0.6 then
-                                lastDoorClick = tick()
-                                if botaoAtual then ClicarNaUI(botaoAtual) end
-                                task.spawn(function()
-                                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                                    task.wait(0.1)
-                                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-                                end)
-                            end
-                        end
-                        task.wait(0.1)
-                    end
-                    hum:MoveTo(wp.Position) 
-                end
-
-                -- Anti-Travamento (Stuck)
-                if tick() - tempoChecagemStuck > 1.0 then
-                    if (hrp.Position - lastPos).Magnitude < 0.5 then 
-                        hum.Jump = true 
-                        hum:MoveTo(wp.Position) 
-                    end
-                    lastPos = hrp.Position
-                    tempoChecagemStuck = tick()
-                end
-
-                -- AQUI TÁ A CORREÇÃO PRINCIPAL: Se ele ficar 4 segundos andando contra uma parede, ele cancela e não finge que chegou!
-                if tick() - tempoInicio > 4.0 then
-                    LogSD("🛑 Bateu na parede. Recalculando GPS...")
-                    caminhoAbortado = true
-                    break
+            if status == "open" then
+                -- Se está escrito "Open", a porta está FECHADA. Para e abre.
+                LogSD("🚪 Porta fechada detectada! Abrindo...")
+                hum:MoveTo(hrp.Position) -- Freia o boneco
+                
+                -- Aperta E
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                task.wait(0.1)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                
+                -- Espera ela mudar para "Close" ou sumir (indicando que abriu)
+                local tempoEspera = tick()
+                while tick() - tempoEspera < 3 do
+                    local novoStatus = LerStatusDaPorta()
+                    if novoStatus == "close" or novoStatus == nil then break end
+                    task.wait(0.1)
                 end
                 
-                task.wait(0.05) 
+                LogSD("🔓 Porta aberta. Seguindo caminho...")
+                hum:MoveTo(wp.Position) -- Retoma a caminhada
+            
+            elseif status == "close" then
+                -- Se está escrito "Close", ela já está aberta. Não faz nada, só continua.
+                -- O boneco vai passar direto por ela.
             end
-        end
 
-        -- Se ele não abortou (ou seja, seguiu as bolinhas todas direitinho e contornou as paredes)...
-        if not caminhoAbortado then
-            -- Aí sim a gente mede a distância pra ver se tá de cara com o móvel!
-            local distCheckFinal = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
-            if distCheckFinal <= 5.0 then
+            -- Checagem de distância final do objeto
+            if (hrp.Position - targetPos).Magnitude < 4 then
                 hum:MoveTo(hrp.Position)
-                LogSD("✅ Chegou de cara pro móvel!")
                 return true
             end
+            
+            task.wait()
         end
     end
 
-    LogSD("❌ Falhou após várias tentativas.")
-    return false
+    return true
 end
 
 return SmartDoor
