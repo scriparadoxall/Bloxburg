@@ -12,9 +12,37 @@ local isRunning = false
 local currentMacroId = 0
 local selectedFood = "Hot Dogs"
 
--- Variável para guardar o módulo do GitHub e não precisar baixar toda hora
-local smartSearchCache = nil
+-- =========================================================================
+-- 📦 GERENCIADOR DE MÓDULOS (Nomes Exatos Baseados no GitHub)
+-- =========================================================================
+local ModulosCarregados = {}
 
+local function CarregarModulo(nomeExato)
+    if ModulosCarregados[nomeExato] then return ModulosCarregados[nomeExato] end
+
+    local url = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/" .. nomeExato
+
+    local success, result = pcall(function()
+        local code = game:HttpGet(url)
+        local func = loadstring(code)
+        if func then
+            return func()
+        end
+        return nil
+    end)
+
+    if success and result then
+        ModulosCarregados[nomeExato] = result
+        return result
+    else
+        warn("Erro ao tentar baixar o módulo: " .. nomeExato)
+        return nil
+    end
+end
+
+-- =========================================================================
+-- CONFIGURAÇÕES DE AÇÕES
+-- =========================================================================
 local validActions = {
     "fry", "bake", "cook", "prepare", "stir", "mix", "chop", 
     "cut", "pour", "form", "garnish", "boil", "add", "blend",
@@ -59,77 +87,74 @@ local function GetCurrentAction()
     return nil, nil
 end
 
+-- CLIQUE MELHORADO PARA GARANTIR QUE A GUI RECEBA O COMANDO
 local function SafeClick(element)
     if not element then return false end
     local success = false
     pcall(function()
         if getconnections then
             if element.MouseButton1Click then 
-                for _, conn in pairs(getconnections(element.MouseButton1Click)) do conn:Fire(); success = true end 
+                for _, conn in pairs(getconnections(element.MouseButton1Click)) do 
+                    conn:Fire() 
+                    success = true 
+                end 
             end
             if not success and element.Activated then 
-                for _, conn in pairs(getconnections(element.Activated)) do conn:Fire(); success = true end 
+                for _, conn in pairs(getconnections(element.Activated)) do 
+                    conn:Fire() 
+                    success = true 
+                end 
+            end
+            -- Tenta forçar o clique se as conexões padrões falharem
+            if not success and element.MouseButton1Down then
+                 for _, conn in pairs(getconnections(element.MouseButton1Down)) do conn:Fire() end 
+                 for _, conn in pairs(getconnections(element.MouseButton1Up)) do conn:Fire() end 
+                 success = true
             end
         end
     end)
     return success
 end
 
-local function AimAtObject(obj)
-    local targetPos = obj:GetPivot().Position
-    local lookTarget = targetPos + Vector3.new(0, -0.5, 0) 
-    local tween = TweenService:Create(Camera, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {CFrame = CFrame.lookAt(Camera.CFrame.Position, lookTarget)})
-    tween:Play()
-    task.wait(0.5)
-end
-
 -- =========================================================================
--- NOVA LÓGICA DE MOVIMENTO USANDO O GITHUB (smartSearch)
+-- 🧠 INTEGRAÇÃO COM CÉREBRO, PERNAS E CÂMERA
 -- =========================================================================
-local function GetSmartSearch()
-    if smartSearchCache then return smartSearchCache end
-    
-    local success, result = pcall(function()
-        local moduleUrl = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/smartSearch"
-        return loadstring(game:HttpGet(moduleUrl))()
-    end)
-    
-    if success and result and type(result.Find) == "function" then
-        smartSearchCache = result
-        return smartSearchCache
-    end
-    return nil
-end
-
 local function MoveToStation(stationType)
-    local searcher = GetSmartSearch()
-    
+    -- 1. Pega o Cérebro com o nome exato
+    local searcher = CarregarModulo("smartSearch")
     if not searcher then 
-        Log("ERRO: Falha ao carregar o módulo smartSearch do GitHub!", Color3.fromRGB(255, 50, 50))
+        Log("ERRO: Falha ao carregar smartSearch!", Color3.fromRGB(255, 50, 50))
         return false 
     end
 
+    -- 2. Acha o alvo
     local obj, part, dist = searcher.Find(stationType)
-    
     if not obj or not part then 
-        Log("ERRO: Nenhuma estação do tipo '" .. stationType .. "' encontrada acessível!", Color3.fromRGB(255, 100, 100))
+        Log("ERRO: Nenhuma '" .. stationType .. "' acessível!", Color3.fromRGB(255, 100, 100))
         return false 
     end
 
-    if type(_G.SmartDoor) ~= "table" or type(_G.SmartDoor.IrPara) ~= "function" then
-        Log("ERRO: Módulo SmartDoor não encontrado! Execute o Hub.", Color3.fromRGB(255, 50, 50))
+    -- 3. Pega as Pernas com o nome exato
+    local doorSystem = CarregarModulo("smart_door.lua")
+    if not doorSystem then
+        Log("ERRO: Falha ao carregar smart_door!", Color3.fromRGB(255, 50, 50))
         return false
     end
 
-    -- Manda o bot andar exatamente para a porta encontrada pelo smartSearch
-    local chegou_no_destino = _G.SmartDoor.IrPara(part)
+    -- 4. Anda até lá desviando das portas
+    local chegou_no_destino = doorSystem.IrPara(part)
 
     if chegou_no_destino then
         local hrp = LocalPlayer.Character.HumanoidRootPart
-        local targetPos = part.Position
+        
+        -- Vira o corpo pra frente do móvel (focando na peça exata)
+        hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(part.Position.X, hrp.Position.Y, part.Position.Z))
 
-        hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(targetPos.X, hrp.Position.Y, targetPos.Z))
-        AimAtObject(obj) -- Mira na estrutura geral
+        -- 5. Pega a Câmera Humana com o nome exato
+        local camSystem = CarregarModulo("smart_cam")
+        if camSystem then
+            camSystem.OlharPara(part)
+        end
 
         task.wait(0.2)
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
@@ -258,14 +283,20 @@ function _G.BloxburgChef.Start(food)
                         listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)")
                         if listMenu and listMenu.Enabled then break end
 
+                        -- NOVO SISTEMA: Varre todos os botões da interface de interação em busca da palavra
                         local interactUI = PlayerGui:FindFirstChild("_interactUI")
                         if interactUI then
-                            local center = interactUI:FindFirstChild("Center")
-                            local btn = center and center:FindFirstChild("Button")
-                            local lbl = btn and btn:FindFirstChild("TextLabel")
-                            if lbl and (string.lower(lbl.Text):find("take") or string.lower(lbl.Text):find("pegar") or string.lower(lbl.Text):find("ingredients")) then
-                                SafeClick(btn)
-                                task.wait(0.5)
+                            for _, btn in pairs(interactUI:GetDescendants()) do
+                                if (btn:IsA("ImageButton") or btn:IsA("TextButton")) and btn.Visible then
+                                    local lbl = btn:FindFirstChild("TextLabel")
+                                    if lbl and lbl.Text ~= "" then
+                                        local txt = string.lower(lbl.Text)
+                                        if txt:find("take") or txt:find("pegar") or txt:find("ingredients") or txt:find("ingredientes") then
+                                            SafeClick(btn)
+                                            task.wait(0.5)
+                                        end
+                                    end
+                                end
                             end
                         end
 
@@ -274,7 +305,7 @@ function _G.BloxburgChef.Start(food)
                     end
 
                     if listMenu and listMenu.Enabled then
-                        Log("Menu aberto. Chamando módulo externo para pegar: " .. selectedFood, Color3.fromRGB(200, 200, 200))
+                        Log("Menu aberto. Pegando ingrediente...", Color3.fromRGB(200, 200, 200))
                         task.wait(0.5) 
 
                         pcall(function()
@@ -285,8 +316,6 @@ function _G.BloxburgChef.Start(food)
                                 local foodModule = getScript()
                                 if type(foodModule) == "table" and type(foodModule.Pegar) == "function" then
                                     foodModule.Pegar(selectedFood)
-                                else
-                                    Log("Aviso: Módulo falhou.", Color3.fromRGB(255, 100, 100))
                                 end
                             end
                         end)
@@ -311,6 +340,8 @@ function _G.BloxburgChef.Start(food)
                         Log("Geladeira não encontrada ou bloqueada!", Color3.fromRGB(255, 50, 50))
                         task.wait(3)
                     end
+                else
+                    task.wait(2)
                 end
             end
 
@@ -350,6 +381,8 @@ function _G.BloxburgChef.Start(food)
                         end
 
                         cookingStatus = MonitorAndCook(actText)
+                    else
+                        task.wait(2) 
                     end
                 else
                      task.wait(0.5)
@@ -363,8 +396,9 @@ function _G.BloxburgChef.Stop()
     isRunning = false
     currentMacroId = currentMacroId + 1
 
-    if type(_G.SmartDoor) == "table" and type(_G.SmartDoor.Cancelar) == "function" then
-        _G.SmartDoor.Cancelar()
+    local doorSystem = CarregarModulo("smart_door.lua")
+    if doorSystem and type(doorSystem.Cancelar) == "function" then
+        doorSystem.Cancelar()
     end
 
     local player = game:GetService("Players").LocalPlayer
