@@ -10,7 +10,7 @@ local function LogSD(msg)
     if _G.BloxburgChef_AddLog then
         _G.BloxburgChef_AddLog(msg, Color3.fromRGB(255, 170, 0))
     else
-        print(msg)
+        print("[SmartDoor] " .. msg)
     end
 end
 
@@ -22,23 +22,22 @@ local function AlterarFantasmas(estado)
     if not plots then return end
 
     for _, plot in pairs(plots:GetChildren()) do
-        if plot:FindFirstChild("House") and plot.House:FindFirstChild("Walls") then
-            for _, obj in pairs(plot.House.Walls:GetDescendants()) do
-                if obj:IsA("BasePart") then
-                    local nome = string.lower(obj.Name)
-                    local nomePai = obj.Parent and string.lower(obj.Parent.Name) or ""
-                    
-                    if string.find(nome, "door") or string.find(nomePai, "door") then
-                        if estado == "LIGAR" then
-                            if not obj:FindFirstChild("IgnorarNoGPS") then
-                                local modifier = Instance.new("PathfindingModifier")
-                                modifier.Name = "IgnorarNoGPS"
-                                modifier.PassThrough = true
-                                modifier.Parent = obj
+        if plot:FindFirstChild("House") then
+            for _, obj in pairs(plot.House:GetDescendants()) do
+                if obj:IsA("Model") and (string.find(string.lower(obj.Name), "door") or string.find(string.lower(obj.Name), "gate")) then
+                    for _, part in pairs(obj:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            if estado == "LIGAR" then
+                                if not part:FindFirstChild("IgnorarNoGPS") then
+                                    local modifier = Instance.new("PathfindingModifier")
+                                    modifier.Name = "IgnorarNoGPS"
+                                    modifier.PassThrough = true
+                                    modifier.Parent = part
+                                end
+                            elseif estado == "DESLIGAR" then
+                                local mod = part:FindFirstChild("IgnorarNoGPS")
+                                if mod then mod:Destroy() end
                             end
-                        elseif estado == "DESLIGAR" then
-                            local fantasma = obj:FindFirstChild("IgnorarNoGPS")
-                            if fantasma then fantasma:Destroy() end
                         end
                     end
                 end
@@ -79,28 +78,53 @@ function SmartDoor.Cancelar()
 end
 
 -- ==========================================
--- 👁️ LEITOR DE PLACAS DA PORTA
+-- 👁️ LEITOR DA INTERFACE E CLIQUE (MOBILE + PC)
 -- ==========================================
-local function LerTextoDaInterface()
-    local PlayerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
-    if not PlayerGui then return nil end
+local function LerStatusDaPorta()
+    local player = Players.LocalPlayer
+    local texto = nil
+    local botao = nil
 
-    local interactUI = PlayerGui:FindFirstChild("_interactUI")
-    if interactUI then
-        local indicator = interactUI:FindFirstChild("InteractIndicator")
-        local textLabel = indicator and indicator:FindFirstChild("TextLabel")
-
-        if not textLabel then
-            local center = interactUI:FindFirstChild("Center")
-            local button = center and center:FindFirstChild("Button")
-            textLabel = button and button:FindFirstChild("TextLabel")
+    pcall(function()
+        local interactUI = player.PlayerGui:FindFirstChild("_interactUI")
+        if interactUI then
+            -- O Caminho exato que você pediu
+            local indicator = interactUI:FindFirstChild("InteractIndicator")
+            if indicator then
+                local label = indicator:FindFirstChild("TextLabel")
+                if label and label.Text ~= "" then
+                    texto = string.lower(label.Text)
+                    botao = indicator
+                end
+            end
+            
+            -- Fallback
+            if not texto then
+                local center = interactUI:FindFirstChild("Center")
+                if center then
+                    local btn = center:FindFirstChild("Button")
+                    if btn then
+                        local lbl = btn:FindFirstChild("TextLabel")
+                        if lbl and lbl.Text ~= "" then
+                            texto = string.lower(lbl.Text)
+                            botao = btn
+                        end
+                    end
+                end
+            end
         end
+    end)
+    
+    return texto, botao
+end
 
-        if textLabel and textLabel.Text ~= "" then
-            return string.lower(textLabel.Text)
+local function ClicarNaUI(botao)
+    pcall(function()
+        if getconnections and botao then
+            for _, conn in pairs(getconnections(botao.MouseButton1Click)) do conn:Fire() end
+            for _, conn in pairs(getconnections(botao.Activated)) do conn:Fire() end
         end
-    end
-    return nil
+    end)
 end
 
 function SmartDoor.IrPara(destino)
@@ -137,10 +161,10 @@ function SmartDoor.IrPara(destino)
         if typeof(destino) == "Instance" then TransformarAlvoEmFantasma(destino, "LIGAR") end
 
         local path = PathfindingService:CreatePath({
-            AgentRadius = 0.5, -- Retornado para 0.5 para não ralar na parede
+            AgentRadius = 0.5, 
             AgentHeight = 4, 
             AgentCanJump = true, 
-            WaypointSpacing = 4 
+            WaypointSpacing = 3 
         })
 
         local success, err = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
@@ -149,7 +173,7 @@ function SmartDoor.IrPara(destino)
         if typeof(destino) == "Instance" then TransformarAlvoEmFantasma(destino, "DESLIGAR") end
 
         local waypoints = {}
-        
+
         if success and (path.Status == Enum.PathStatus.Success or path.Status == Enum.PathStatus.ClosestNoPath) then
             waypoints = path:GetWaypoints()
             LogSD("✅ Rota encontrada pelo GPS!")
@@ -164,21 +188,19 @@ function SmartDoor.IrPara(destino)
 
         for i, wp in ipairs(waypoints) do
             if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
-            
+
             if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
 
             hum:MoveTo(wp.Position) 
-            
+
             local tempoInicio = tick()
             local lastPos = hrp.Position
             local tempoChecagemStuck = tick()
 
-            while (hrp.Position - wp.Position).Magnitude > 4.0 do
+            while (hrp.Position - wp.Position).Magnitude > 3.0 do
                 if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
-                
-                -- AQUI ESTÁ A CORREÇÃO:
-                -- Ele só usa o radar de distância se estiver nos dois ÚLTIMOS passos da rota.
-                -- Assim ele não tenta interagir através da parede!
+
+                -- Ele só usa o radar de distância final se estiver nos DOIS ÚLTIMOS passos da rota
                 if i >= totalPontos - 1 then
                     local distFinal = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
                     if distFinal <= 3.5 then
@@ -188,23 +210,30 @@ function SmartDoor.IrPara(destino)
                     end
                 end
 
-                local textoUI = LerTextoDaInterface()
-                if textoUI and (string.find(textoUI, "open") or string.find(textoUI, "abrir")) then
-                    LogSD("🚪 Porta trancada detectada! Puxando freio...")
+                -- LÓGICA EXATA DA PORTA
+                local status, botao = LerStatusDaPorta()
+                
+                if status and (string.find(status, "open") or string.find(status, "abrir")) then
+                    LogSD("🚪 Porta fechada detectada! Puxando freio...")
                     hum:MoveTo(hrp.Position) 
-                    
+
                     local tempoTentando = tick()
                     while tick() - tempoTentando < 5 do
                         if SmartDoor.CurrentWalkId ~= myWalkId then return false end 
-                        
-                        local statusAtual = LerTextoDaInterface()
-                        
+
+                        local statusAtual, botaoAtual = LerStatusDaPorta()
+
                         if not statusAtual or string.find(statusAtual, "close") or string.find(statusAtual, "fechar") then
                             LogSD("🔓 Caminho livre! Voltando a correr...")
                             break
                         elseif string.find(statusAtual, "open") or string.find(statusAtual, "abrir") then
                             if tick() - lastDoorClick > 0.5 then
                                 lastDoorClick = tick()
+                                
+                                -- Clique Mobile
+                                if botaoAtual then ClicarNaUI(botaoAtual) end
+                                
+                                -- Clique PC
                                 task.spawn(function()
                                     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
                                     task.wait(0.1)
@@ -215,10 +244,12 @@ function SmartDoor.IrPara(destino)
                         task.wait(0.1)
                     end
                     hum:MoveTo(wp.Position) 
+                elseif status and (string.find(status, "close") or string.find(status, "fechar")) then
+                    -- Ignora e passa direto, a porta já está aberta
                 end
 
                 if tick() - tempoChecagemStuck > 0.8 then
-                    if (hrp.Position - lastPos).Magnitude < 1 then 
+                    if (hrp.Position - lastPos).Magnitude < 0.5 then 
                         hum.Jump = true 
                         hum:MoveTo(wp.Position)
                     end
@@ -226,7 +257,7 @@ function SmartDoor.IrPara(destino)
                     tempoChecagemStuck = tick()
                 end
 
-                if tick() - tempoInicio > 3.0 then break end
+                if tick() - tempoInicio > 4.0 then break end
                 task.wait(0.1) 
             end
         end
