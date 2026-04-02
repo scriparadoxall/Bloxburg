@@ -160,12 +160,12 @@ function SmartDoor.IrPara(destino)
         ConfigurarMapa("LIGAR")
         if typeof(destino) == "Instance" then TransformarAlvoEmFantasma(destino, "LIGAR") end
 
-        -- GPS DE RESPEITO: AgentRadius maior para NÃO raspar em paredes.
+        -- GPS DE RESPEITO: AgentRadius ajustado para não entalar em portas
         local path = PathfindingService:CreatePath({
-            AgentRadius = 1.2, -- 1.2 mantém o boneco longe das paredes
+            AgentRadius = 0.8,     -- 📉 Diminuímos a "gordura" do bot
             AgentHeight = 5,
             AgentCanJump = true,
-            WaypointSpacing = 3,
+            WaypointSpacing = 1.5, -- 📉 Reduzido para evitar bugar em curvas
             Costs = {
                 CaminhoTop = 0.1 -- Faz o GPS dar MUITA preferência para andar nas suas calçadas!
             }
