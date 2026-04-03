@@ -7,6 +7,9 @@ local SmartDoor = {}
 SmartDoor.CurrentWalkId = 0 
 local lastDoorClick = 0
 
+-- Variável Global para controlar a visualização da rota
+if _G.MostrarBolinhas == nil then _G.MostrarBolinhas = true end
+
 -- Função de Log
 local function LogSD(msg)
     if _G.StatusTextoTeste then _G.StatusTextoTeste.Text = msg end
@@ -14,27 +17,34 @@ local function LogSD(msg)
 end
 
 -- ==========================================
--- 🔴 DESENHAR O CAMINHO (VISUALIZADOR DE GPS)
+-- 🔴 DESENHAR O CAMINHO (VISUALIZADOR HOLOGRÁFICO)
 -- ==========================================
 local function DesenharCaminho(waypoints)
     local folder = workspace:FindFirstChild("CaminhoSmartDoor")
     if folder then folder:Destroy() end
     
+    if not _G.MostrarBolinhas then return {} end -- Se tiver OFF, não desenha nada
+
     folder = Instance.new("Folder")
     folder.Name = "CaminhoSmartDoor"
     folder.Parent = workspace
 
+    local parts = {}
     for i, wp in ipairs(waypoints) do
         local part = Instance.new("Part")
-        part.Size = Vector3.new(1, 1, 1)
+        part.Size = Vector3.new(0.8, 0.8, 0.8) -- Menor e mais delicado
         part.Position = wp.Position
         part.Anchored = true
         part.CanCollide = false
         part.Material = Enum.Material.Neon
-        part.Color = Color3.fromRGB(255, 50, 50)
+        part.Color = Color3.fromRGB(0, 255, 255) -- Ciano (estilo tech)
+        part.Transparency = 0.3 -- Efeito holográfico
         part.Shape = Enum.PartType.Ball
         part.Parent = folder
+        parts[i] = part
     end
+    
+    return parts -- Retornamos a tabela para poder apagar depois
 end
 
 -- ==========================================
@@ -44,7 +54,6 @@ local function PrepararFisica(estado, alvo)
     local plots = workspace:FindFirstChild("Plots")
     if not plots then return end
 
-    -- 1. Ignorar todas as portas da casa (Continua intacto!)
     for _, plot in pairs(plots:GetChildren()) do
         local house = plot:FindFirstChild("House")
         if house then
@@ -67,7 +76,6 @@ local function PrepararFisica(estado, alvo)
         end
     end
 
-    -- 2. Ignorar o alvo para o GPS
     if alvo then
         local model = alvo:FindFirstAncestorWhichIsA("Model") or alvo
         for _, part in pairs(model:GetDescendants()) do
@@ -86,7 +94,7 @@ local function PrepararFisica(estado, alvo)
 end
 
 -- ==========================================
--- 👁️ ABRIR PORTA COM A INTERFACE (Continua intacto!)
+-- 👁️ ABRIR PORTA COM A INTERFACE
 -- ==========================================
 local function TentarAbrirPorta()
     local p = Players.LocalPlayer
@@ -131,13 +139,12 @@ local function TentarAbrirPorta()
 end
 
 -- ==========================================
--- 🎯 RADAR: ACHA A FRENTE DO MÓVEL (NOVO!)
+-- 🎯 RADAR: ACHA A FRENTE DO MÓVEL
 -- ==========================================
 local function ObterPosicaoNaFrente(alvoPart)
     local pos = alvoPart.Position
     local cf = alvoPart.CFrame
     
-    -- Dispara para 4 lados (Frente, Trás, Esquerda, Direita do móvel)
     local direcoes = {
         cf.LookVector,
         -cf.LookVector,
@@ -150,31 +157,26 @@ local function ObterPosicaoNaFrente(alvoPart)
     
     local rp = RaycastParams.new()
     rp.FilterType = Enum.RaycastFilterType.Exclude
-    -- Ignora o player e o próprio móvel para o raio não bater neles mesmos
     local model = alvoPart:FindFirstAncestorWhichIsA("Model") or alvoPart
     rp.FilterDescendantsInstances = {Players.LocalPlayer.Character, model}
     
     for _, dir in ipairs(direcoes) do
-        -- Raio de 10 blocos de distância
         local resultado = workspace:Raycast(pos, dir * 10, rp)
         local distanciaLivre = 10
         
-        -- Se bateu em algo (tipo a parede), anota a distância
         if resultado then
             distanciaLivre = (resultado.Position - pos).Magnitude
         end
         
-        -- Pega a direção que tem mais espaço sobrando
         if distanciaLivre > maiorEspacoLivre then
             maiorEspacoLivre = distanciaLivre
             melhorDirecao = dir
         end
     end
     
-    -- Calcula o alvo: 3 passos na direção mais livre (oposto da parede)
-    local posicaoAlvo = pos + (melhorDirecao * 3)
+    -- REDUZIDO DE 3 PARA 1.8 PARA FICAR MAIS COLADO NO FOGÃO/GELADEIRA
+    local posicaoAlvo = pos + (melhorDirecao * 1.8)
     
-    -- Pega a altura do chão do player pra não tentar voar
     local hrp = Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     local alturaY = hrp and hrp.Position.Y or pos.Y
     
@@ -193,13 +195,11 @@ function SmartDoor.IrPara(destino, targetPosForcado)
     local hum = char.Humanoid
     local hrp = char.HumanoidRootPart
 
-    -- Verifica qual é o alvo de verdade e acha a parte da frente dele
     local alvoPart = destino
     if typeof(destino) == "Instance" and destino:IsA("Model") then
         alvoPart = destino.PrimaryPart or destino:FindFirstChildWhichIsA("BasePart", true)
     end
     
-    -- Usa a posição forçada ou calcula a frente pra desviar da parede
     local targetPos = targetPosForcado
     if typeof(alvoPart) == "Instance" and alvoPart:IsA("BasePart") then
         targetPos = ObterPosicaoNaFrente(alvoPart)
@@ -211,13 +211,13 @@ function SmartDoor.IrPara(destino, targetPosForcado)
     task.wait(0.15) 
 
     local path = PathfindingService:CreatePath({
-        AgentRadius = 1.0, 
+        AgentRadius = 1.5, -- AUMENTADO PARA EVITAR BATER EM QUINAS
         AgentHeight = 5,
         AgentCanJump = true,
-        WaypointSpacing = 4
+        WaypointSpacing = 3 -- DIMINUÍDO PARA GERAR CURVAS MAIS SUAVES
     })
 
-    LogSD("2. Calculando Rota para a FRENTE do móvel...")
+    LogSD("2. Calculando Rota...")
     local success, errorMessage = pcall(function() 
         path:ComputeAsync(hrp.Position, targetPos) 
     end)
@@ -230,8 +230,8 @@ function SmartDoor.IrPara(destino, targetPosForcado)
     end
 
     local waypoints = path:GetWaypoints()
-    LogSD("✅ Rota encontrada! Desenhando pontos...")
-    DesenharCaminho(waypoints)
+    LogSD("✅ Rota encontrada! Andando...")
+    local bolinhasVisuais = DesenharCaminho(waypoints)
 
     for i, wp in ipairs(waypoints) do
         if SmartDoor.CurrentWalkId ~= myId then return false end
@@ -243,6 +243,10 @@ function SmartDoor.IrPara(destino, targetPosForcado)
         local tStart = tick()
         local lastPos = hrp.Position
         local checkStuck = tick()
+        
+        -- O último ponto precisa de uma precisão maior (1.0), os do meio podem ser mais folgados (2.0)
+        local isLastWaypoint = (i == #waypoints)
+        local distanciaTolerancia = isLastWaypoint and 1.0 or 2.0
 
         while true do
             if SmartDoor.CurrentWalkId ~= myId then return false end
@@ -250,7 +254,11 @@ function SmartDoor.IrPara(destino, targetPosForcado)
             local pPos = Vector3.new(hrp.Position.X, 0, hrp.Position.Z)
             local wPos = Vector3.new(wp.Position.X, 0, wp.Position.Z)
             
-            if (pPos - wPos).Magnitude <= 3.5 then
+            -- Se chegou na tolerância, apaga a bolinha e vai pro próximo!
+            if (pPos - wPos).Magnitude <= distanciaTolerancia then
+                if bolinhasVisuais and bolinhasVisuais[i] then
+                    bolinhasVisuais[i]:Destroy()
+                end
                 break 
             end
 
@@ -269,7 +277,6 @@ function SmartDoor.IrPara(destino, targetPosForcado)
             end
 
             if tick() - tStart > 4.0 then 
-                LogSD("⚠️ Ponto demorou muito. Pulando...")
                 break 
             end
             
@@ -291,6 +298,8 @@ end
 function SmartDoor.Cancelar()
     SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
     LogSD("🚫 Caminhada cancelada.")
+    local folder = workspace:FindFirstChild("CaminhoSmartDoor")
+    if folder then folder:Destroy() end
 end
 
 -- ==========================================
@@ -305,7 +314,7 @@ sg.Name = "TestSmartDoorGUI"
 sg.Parent = CoreGui
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 220, 0, 280)
+frame.Size = UDim2.new(0, 220, 0, 330) -- Aumentei para caber o novo botão
 frame.Position = UDim2.new(0.5, -110, 0.2, 0)
 frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 frame.BorderSizePixel = 2
@@ -338,6 +347,28 @@ statusLog.TextWrapped = true
 statusLog.Text = "Aguardando..."
 statusLog.Parent = frame
 _G.StatusTextoTeste = statusLog
+
+-- Botão Toggle Bolinhas
+local btnVis = Instance.new("TextButton")
+btnVis.Size = UDim2.new(0, 180, 0, 30)
+btnVis.BackgroundColor3 = _G.MostrarBolinhas and Color3.fromRGB(40, 150, 40) or Color3.fromRGB(150, 40, 40)
+btnVis.TextColor3 = Color3.new(1,1,1)
+btnVis.Font = Enum.Font.GothamBold
+btnVis.TextSize = 12
+btnVis.Text = _G.MostrarBolinhas and "👁️ ROTA VISUAL [ON]" or "👁️ ROTA VISUAL [OFF]"
+btnVis.Parent = frame
+Instance.new("UICorner").Parent = btnVis
+
+btnVis.MouseButton1Click:Connect(function()
+    _G.MostrarBolinhas = not _G.MostrarBolinhas
+    btnVis.BackgroundColor3 = _G.MostrarBolinhas and Color3.fromRGB(40, 150, 40) or Color3.fromRGB(150, 40, 40)
+    btnVis.Text = _G.MostrarBolinhas and "👁️ ROTA VISUAL [ON]" or "👁️ ROTA VISUAL [OFF]"
+    
+    if not _G.MostrarBolinhas then
+        local folder = workspace:FindFirstChild("CaminhoSmartDoor")
+        if folder then folder:Destroy() end
+    end
+end)
 
 local function EncontrarMovel(tipo)
     local plots = workspace:FindFirstChild("Plots")
@@ -394,10 +425,7 @@ local function CriarBotaoTeste(label, busca)
     b.Font = Enum.Font.SourceSansBold
     b.TextSize = 16
     b.Parent = frame
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = b
+    Instance.new("UICorner").Parent = b
 
     b.MouseButton1Click:Connect(function()
         if b.Text == "Andando..." then return end 
@@ -416,7 +444,6 @@ local function CriarBotaoTeste(label, busca)
             
             b.Text = "Andando..."
             LogSD("Alvo localizado. Acionando GPS...")
-            -- Agora só mandamos o objeto pro IrPara, ele calcula a frente sozinho!
             SmartDoor.IrPara(alvo)
             b.Text = label 
         end)
