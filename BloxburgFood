@@ -87,7 +87,6 @@ local function GetCurrentAction()
     return nil, nil
 end
 
--- CLIQUE MELHORADO PARA GARANTIR QUE A GUI RECEBA O COMANDO
 local function SafeClick(element)
     if not element then return false end
     local success = false
@@ -105,7 +104,6 @@ local function SafeClick(element)
                     success = true 
                 end 
             end
-            -- Tenta forçar o clique se as conexões padrões falharem
             if not success and element.MouseButton1Down then
                  for _, conn in pairs(getconnections(element.MouseButton1Down)) do conn:Fire() end 
                  for _, conn in pairs(getconnections(element.MouseButton1Up)) do conn:Fire() end 
@@ -117,43 +115,85 @@ local function SafeClick(element)
 end
 
 -- =========================================================================
--- 🧠 INTEGRAÇÃO COM CÉREBRO, PERNAS E CÂMERA
+-- 🧠 INTEGRAÇÃO COM CÉREBRO E PERNAS (Simplificada para a nova SmartDoor)
 -- =========================================================================
 local function MoveToStation(stationType)
-    -- 1. Pega o Cérebro com o nome exato
-    local searcher = CarregarModulo("smartSearch")
-    if not searcher then 
-        Log("ERRO: Falha ao carregar smartSearch!", Color3.fromRGB(255, 50, 50))
-        return false 
-    end
-
-    -- 2. Acha o alvo
-    local obj, part, dist = searcher.Find(stationType)
-    if not obj or not part then 
-        Log("ERRO: Nenhuma '" .. stationType .. "' acessível!", Color3.fromRGB(255, 100, 100))
-        return false 
-    end
-
-    -- 3. Pega as Pernas com o nome exato
     local doorSystem = CarregarModulo("smart_door.lua")
     if not doorSystem then
         Log("ERRO: Falha ao carregar smart_door!", Color3.fromRGB(255, 50, 50))
         return false
     end
 
-    -- 4. Anda até lá desviando das portas
-    local chegou_no_destino = doorSystem.IrPara(part)
+    -- O próprio smart_door agora acha o alvo, lida com colisões e acha a frente do móvel.
+    -- Vamos passar o nome da estação (Fridge, Stove, Cover) pra ele!
+    local buscaFormatada = ""
+    if stationType == "fridge" then buscaFormatada = "Fridge"
+    elseif stationType == "stove" then buscaFormatada = "Stove"
+    elseif stationType == "counter" then buscaFormatada = "Cover"
+    end
+
+    -- Usamos a função de busca integrada que colocamos no final do seu smart_door de teste
+    -- Como a gente removeu a interface, precisamos de um buscador rápido aqui:
+    local function AcharNaCasa(tipo)
+        local plots = workspace:FindFirstChild("Plots")
+        if not plots then return nil end
+        local char = Players.LocalPlayer.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") then return nil end
+        local myPos = char.HumanoidRootPart.Position
+        local nearestObj = nil
+        local nearestDist = math.huge
+
+        for _, plot in pairs(plots:GetChildren()) do
+            if plot:FindFirstChild("House") and plot.House:FindFirstChild("Counters") then
+                for _, obj in pairs(plot.House.Counters:GetChildren()) do
+                    local name = string.lower(obj.Name)
+                    local isMatch = false
+                    if tipo == "Fridge" and (name:find("fridge") or name:find("refrigerator") or name:find("icebox")) then isMatch = true end
+                    if tipo == "Stove" and (name:find("stove") or name:find("oven") or name:find("cook")) then isMatch = true end
+                    if tipo == "Cover" and (name:find("counter") or name:find("island") or name:find("cabinet")) then isMatch = true end
+
+                    if isMatch then
+                        local alvoPart = obj
+                        local objModel = obj:FindFirstChild("ObjectModel")
+                        if objModel then
+                            alvoPart = objModel:FindFirstChild("OvenDoor") or objModel:FindFirstChild("MainDoor") or objModel:FindFirstChild("Door") or objModel
+                        end
+                        
+                        local partParaMedir = alvoPart:IsA("Model") and (alvoPart.PrimaryPart or alvoPart:FindFirstChildWhichIsA("BasePart", true)) or alvoPart
+                        
+                        if partParaMedir and partParaMedir:IsA("BasePart") then
+                            local dist = (myPos - partParaMedir.Position).Magnitude
+                            if dist < nearestDist then
+                                nearestDist = dist
+                                nearestObj = alvoPart
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        return nearestObj
+    end
+
+    local alvo = AcharNaCasa(buscaFormatada)
+    if not alvo then
+        Log("ERRO: Nenhuma '" .. stationType .. "' acessível!", Color3.fromRGB(255, 100, 100))
+        return false 
+    end
+
+    local chegou_no_destino = doorSystem.IrPara(alvo)
 
     if chegou_no_destino then
         local hrp = LocalPlayer.Character.HumanoidRootPart
         
-        -- Vira o corpo pra frente do móvel (focando na peça exata)
-        hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(part.Position.X, hrp.Position.Y, part.Position.Z))
+        -- Garante que o alvo tem uma posição para olhar
+        local posOlhar = alvo:IsA("Model") and (alvo.PrimaryPart and alvo.PrimaryPart.Position or alvo:GetPivot().Position) or alvo.Position
+        
+        hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(posOlhar.X, hrp.Position.Y, posOlhar.Z))
 
-        -- 5. Pega a Câmera Humana com o nome exato
         local camSystem = CarregarModulo("smart_cam")
         if camSystem then
-            camSystem.OlharPara(part)
+            camSystem.OlharPara(alvo)
         end
 
         task.wait(0.2)
@@ -283,7 +323,6 @@ function _G.BloxburgChef.Start(food)
                         listMenu = PlayerGui:FindFirstChild("_ListFrame (T_Ingredients)")
                         if listMenu and listMenu.Enabled then break end
 
-                        -- NOVO SISTEMA: Varre todos os botões da interface de interação em busca da palavra
                         local interactUI = PlayerGui:FindFirstChild("_interactUI")
                         if interactUI then
                             for _, btn in pairs(interactUI:GetDescendants()) do
