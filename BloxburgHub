@@ -3,6 +3,9 @@ local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 local VirtualUser = game:GetService("VirtualUser")
 
+-- Define o padrão das bolinhas como FALSE no Hub
+if _G.MostrarBolinhas == nil then _G.MostrarBolinhas = false end
+
 -- LIMPEZA DE LOOPS FANTASMAS ANTES DE CARREGAR
 if _G.BloxburgChef and typeof(_G.BloxburgChef.Stop) == "function" then
     pcall(function() _G.BloxburgChef.Stop() end)
@@ -174,7 +177,7 @@ local function LoadMainHub()
     -- CONTEÚDO: AUTOMATIONS (Farm + Logs)
     --------------------------
     local AutoPage = pageFrames["Automations"]
-    
+
     local selectedFoodUI = "Hot Dogs"
     local FoodBtn = Instance.new("TextButton", AutoPage)
     FoodBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); FoodBtn.Position = UDim2.new(0, 5, 0, 5); FoodBtn.Size = UDim2.new(0, 160, 0, 35)
@@ -240,7 +243,8 @@ local function LoadMainHub()
     -- CONTEÚDO: CONFIG (Úteis)
     --------------------------
     local ConfigPage = pageFrames["Config"]
-    
+
+    -- BOTÃO ANTI-AFK
     local AntiAfkBtn = Instance.new("TextButton", ConfigPage)
     AntiAfkBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); AntiAfkBtn.Position = UDim2.new(0, 10, 0, 10); AntiAfkBtn.Size = UDim2.new(0, 200, 0, 40)
     AntiAfkBtn.Font = Enum.Font.GothamSemibold; AntiAfkBtn.Text = "🛡️ Anti-AFK [OFF]"; AntiAfkBtn.TextColor3 = Color3.fromRGB(255, 100, 100); AntiAfkBtn.TextSize = 14
@@ -253,23 +257,53 @@ local function LoadMainHub()
         if isAntiAfkOn then
             AntiAfkBtn.Text = "🛡️ Anti-AFK [ON]"
             AntiAfkBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
-            -- Conexão nativa para enganar o Roblox
             antiAfkConnection = Players.LocalPlayer.Idled:Connect(function()
                 VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
                 task.wait(1)
                 VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
             end)
-            _G.BloxburgChef_AddLog("Anti-AFK ativado!", Color3.fromRGB(100, 255, 100))
+            if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Anti-AFK ativado!", Color3.fromRGB(100, 255, 100)) end
         else
             AntiAfkBtn.Text = "🛡️ Anti-AFK [OFF]"
             AntiAfkBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
             if antiAfkConnection then antiAfkConnection:Disconnect() end
-            _G.BloxburgChef_AddLog("Anti-AFK desativado.", Color3.fromRGB(255, 100, 100))
+            if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Anti-AFK desativado.", Color3.fromRGB(255, 100, 100)) end
         end
     end)
-    
+
+    -- BOTÃO DE ROTA VISUAL (NOVO!)
+    local RouteBtn = Instance.new("TextButton", ConfigPage)
+    RouteBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); RouteBtn.Position = UDim2.new(0, 10, 0, 60); RouteBtn.Size = UDim2.new(0, 200, 0, 40)
+    RouteBtn.Font = Enum.Font.GothamSemibold; RouteBtn.TextSize = 14
+    Instance.new("UICorner", RouteBtn).CornerRadius = UDim.new(0, 6)
+
+    if _G.MostrarBolinhas then
+        RouteBtn.Text = "👁️ Rota Visual [ON]"
+        RouteBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
+    else
+        RouteBtn.Text = "👁️ Rota Visual [OFF]"
+        RouteBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+    end
+
+    RouteBtn.MouseButton1Click:Connect(function()
+        _G.MostrarBolinhas = not _G.MostrarBolinhas
+        if _G.MostrarBolinhas then
+            RouteBtn.Text = "👁️ Rota Visual [ON]"
+            RouteBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
+            if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Rota visual ativada!", Color3.fromRGB(100, 255, 100)) end
+        else
+            RouteBtn.Text = "👁️ Rota Visual [OFF]"
+            RouteBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+            if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Rota visual desativada.", Color3.fromRGB(255, 100, 100)) end
+            
+            -- Limpa os orbs imediatamente da tela quando desativa
+            local folder = workspace:FindFirstChild("CaminhoSmartDoor")
+            if folder then folder:Destroy() end
+        end
+    end)
+
     local ConfigNote = Instance.new("TextLabel", ConfigPage)
-    ConfigNote.BackgroundTransparency = 1; ConfigNote.Position = UDim2.new(0, 10, 0, 60); ConfigNote.Size = UDim2.new(1, -20, 0, 40)
+    ConfigNote.BackgroundTransparency = 1; ConfigNote.Position = UDim2.new(0, 10, 0, 110); ConfigNote.Size = UDim2.new(1, -20, 0, 40)
     ConfigNote.Font = Enum.Font.Gotham; ConfigNote.Text = "O Anti-AFK previne que você seja desconectado do jogo após 20 minutos de inatividade enquanto farma."; ConfigNote.TextColor3 = Color3.fromRGB(150, 150, 150); ConfigNote.TextSize = 11; ConfigNote.TextWrapped = true; ConfigNote.TextXAlignment = Enum.TextXAlignment.Left
 
 end
