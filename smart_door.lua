@@ -1,5 +1,6 @@
 local PathfindingService = game:GetService("PathfindingService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 
@@ -7,7 +8,6 @@ local SmartDoor = {}
 SmartDoor.CurrentWalkId = 0 
 local lastDoorClick = 0
 
--- Variável Global para controlar a visualização da rota
 if _G.MostrarBolinhas == nil then _G.MostrarBolinhas = true end
 
 -- Função de Log
@@ -17,13 +17,13 @@ local function LogSD(msg)
 end
 
 -- ==========================================
--- 🔴 DESENHAR O CAMINHO (VISUALIZADOR HOLOGRÁFICO)
+-- 🔴 ROTA VISUAL (DISCOS HOLOGRÁFICOS)
 -- ==========================================
 local function DesenharCaminho(waypoints)
     local folder = workspace:FindFirstChild("CaminhoSmartDoor")
     if folder then folder:Destroy() end
     
-    if not _G.MostrarBolinhas then return {} end -- Se tiver OFF, não desenha nada
+    if not _G.MostrarBolinhas then return {} end
 
     folder = Instance.new("Folder")
     folder.Name = "CaminhoSmartDoor"
@@ -32,23 +32,38 @@ local function DesenharCaminho(waypoints)
     local parts = {}
     for i, wp in ipairs(waypoints) do
         local part = Instance.new("Part")
-        part.Size = Vector3.new(0.8, 0.8, 0.8) -- Menor e mais delicado
-        part.Position = wp.Position
+        part.Size = Vector3.new(1.4, 0.05, 1.4) 
+        part.Position = wp.Position + Vector3.new(0, 0.15, 0) 
         part.Anchored = true
         part.CanCollide = false
         part.Material = Enum.Material.Neon
-        part.Color = Color3.fromRGB(0, 255, 255) -- Ciano (estilo tech)
-        part.Transparency = 0.3 -- Efeito holográfico
-        part.Shape = Enum.PartType.Ball
+        part.Color = Color3.fromRGB(0, 200, 255) 
+        part.Shape = Enum.PartType.Cylinder
+        part.Orientation = Vector3.new(0, 0, 90) 
         part.Parent = folder
+
+        local light = Instance.new("PointLight")
+        light.Color = part.Color
+        light.Range = 5
+        light.Brightness = 1.5
+        light.Parent = part
+        
         parts[i] = part
     end
     
-    return parts -- Retornamos a tabela para poder apagar depois
+    return parts 
+end
+
+local function EfeitoSumir(part)
+    if not part then return end
+    local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local tween = TweenService:Create(part, tweenInfo, {Size = Vector3.new(0, 0, 0), Transparency = 1})
+    tween:Play()
+    game.Debris:AddItem(part, 0.35)
 end
 
 -- ==========================================
--- 🗺️ FANTASMAS (SÓ PARA PORTAS E O ALVO)
+-- 🗺️ FANTASMAS (ATRAVESSA PORTAS NO GPS)
 -- ==========================================
 local function PrepararFisica(estado, alvo)
     local plots = workspace:FindFirstChild("Plots")
@@ -57,18 +72,27 @@ local function PrepararFisica(estado, alvo)
     for _, plot in pairs(plots:GetChildren()) do
         local house = plot:FindFirstChild("House")
         if house then
-            for _, obj in pairs(house:GetDescendants()) do
-                if obj:IsA("Model") and (string.find(string.lower(obj.Name), "door") or string.find(string.lower(obj.Name), "gate")) then
-                    for _, part in pairs(obj:GetDescendants()) do
-                        if part:IsA("BasePart") then
-                            if estado == "LIGAR" and not part:FindFirstChild("IgnorarGPS_Porta") then
-                                local mod = Instance.new("PathfindingModifier")
-                                mod.Name = "IgnorarGPS_Porta"
-                                mod.PassThrough = true
-                                mod.Parent = part
-                            elseif estado == "DESLIGAR" and part:FindFirstChild("IgnorarGPS_Porta") then
-                                part.IgnorarGPS_Porta:Destroy()
-                            end
+            for _, part in pairs(house:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    local isDoor = false
+                    local atual = part
+                    while atual and atual ~= house do
+                        local name = string.lower(atual.Name)
+                        if string.find(name, "door") or string.find(name, "gate") then
+                            isDoor = true
+                            break
+                        end
+                        atual = atual.Parent
+                    end
+
+                    if isDoor then
+                        if estado == "LIGAR" and not part:FindFirstChild("IgnorarGPS_Porta") then
+                            local mod = Instance.new("PathfindingModifier")
+                            mod.Name = "IgnorarGPS_Porta"
+                            mod.PassThrough = true
+                            mod.Parent = part
+                        elseif estado == "DESLIGAR" and part:FindFirstChild("IgnorarGPS_Porta") then
+                            if part:FindFirstChild("IgnorarGPS_Porta") then part.IgnorarGPS_Porta:Destroy() end
                         end
                     end
                 end
@@ -86,7 +110,7 @@ local function PrepararFisica(estado, alvo)
                     mod.PassThrough = true
                     mod.Parent = part
                 elseif estado == "DESLIGAR" and part:FindFirstChild("IgnorarGPS_Alvo") then
-                    part.IgnorarGPS_Alvo:Destroy()
+                    if part:FindFirstChild("IgnorarGPS_Alvo") then part.IgnorarGPS_Alvo:Destroy() end
                 end
             end
         end
@@ -94,12 +118,15 @@ local function PrepararFisica(estado, alvo)
 end
 
 -- ==========================================
--- 👁️ ABRIR PORTA COM A INTERFACE
+-- 👁️ ABRIR PORTA (VERSÃO ESTÁVEL COM FREIO E PAUSA)
 -- ==========================================
 local function TentarAbrirPorta()
     local p = Players.LocalPlayer
-    local texto, botao = nil, nil
+    local char = p.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return false end
     
+    local texto, botao = nil, nil
+
     pcall(function()
         local interactUI = p.PlayerGui:FindFirstChild("_interactUI")
         if interactUI then
@@ -114,25 +141,31 @@ local function TentarAbrirPorta()
         end
     end)
     
-    if texto and (texto:find("open") or texto:find("abrir")) then
-        if tick() - lastDoorClick > 0.6 then
-            lastDoorClick = tick()
-            LogSD("🚪 Porta Fechada! Clicando para abrir...")
-            
-            if botao and getconnections then
-                pcall(function()
+    if texto then
+        if texto:find("open") or texto:find("abrir") then
+            if tick() - lastDoorClick > 0.8 then
+                lastDoorClick = tick()
+                
+                LogSD("🚪 Porta detectada. Abrindo...")
+                
+                -- Freia para garantir a interação sem bugar
+                char.Humanoid:MoveTo(char.HumanoidRootPart.Position)
+                
+                if botao and getconnections then
                     for _, c in pairs(getconnections(botao.MouseButton1Click)) do c:Fire() end
                     for _, c in pairs(getconnections(botao.Activated)) do c:Fire() end
-                end)
-            end
-            
-            task.spawn(function()
+                end
+                
                 VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
                 task.wait(0.1)
                 VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-            end)
+                
+                task.wait(0.4) -- Pausa rápida pra porta abrir e ele não bater a cara
+                return true
+            end
+        elseif texto:find("close") or texto:find("fechar") then
+            return false 
         end
-        return true 
     end
     
     return false 
@@ -144,49 +177,31 @@ end
 local function ObterPosicaoNaFrente(alvoPart)
     local pos = alvoPart.Position
     local cf = alvoPart.CFrame
-    
-    local direcoes = {
-        cf.LookVector,
-        -cf.LookVector,
-        cf.RightVector,
-        -cf.RightVector
-    }
-    
+    local direcoes = {cf.LookVector, -cf.LookVector, cf.RightVector, -cf.RightVector}
     local melhorDirecao = Vector3.new(0, 0, 1)
     local maiorEspacoLivre = -1
     
     local rp = RaycastParams.new()
     rp.FilterType = Enum.RaycastFilterType.Exclude
-    local model = alvoPart:FindFirstAncestorWhichIsA("Model") or alvoPart
-    rp.FilterDescendantsInstances = {Players.LocalPlayer.Character, model}
+    rp.FilterDescendantsInstances = {Players.LocalPlayer.Character, alvoPart.Parent}
     
     for _, dir in ipairs(direcoes) do
         local resultado = workspace:Raycast(pos, dir * 10, rp)
-        local distanciaLivre = 10
-        
-        if resultado then
-            distanciaLivre = (resultado.Position - pos).Magnitude
-        end
-        
-        if distanciaLivre > maiorEspacoLivre then
-            maiorEspacoLivre = distanciaLivre
+        local dist = resultado and (resultado.Position - pos).Magnitude or 10
+        if dist > maiorEspacoLivre then
+            maiorEspacoLivre = dist
             melhorDirecao = dir
         end
     end
     
-    -- REDUZIDO DE 3 PARA 1.8 PARA FICAR MAIS COLADO NO FOGÃO/GELADEIRA
-    local posicaoAlvo = pos + (melhorDirecao * 1.8)
-    
-    local hrp = Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    local alturaY = hrp and hrp.Position.Y or pos.Y
-    
-    return Vector3.new(posicaoAlvo.X, alturaY, posicaoAlvo.Z)
+    local alvoFinal = pos + (melhorDirecao * 1.8)
+    return Vector3.new(alvoFinal.X, Players.LocalPlayer.Character.HumanoidRootPart.Position.Y, alvoFinal.Z)
 end
 
 -- ==========================================
 -- 🚶 MOTOR DE CAMINHADA
 -- ==========================================
-function SmartDoor.IrPara(destino, targetPosForcado)
+function SmartDoor.IrPara(destino)
     SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
     local myId = SmartDoor.CurrentWalkId
 
@@ -195,78 +210,60 @@ function SmartDoor.IrPara(destino, targetPosForcado)
     local hum = char.Humanoid
     local hrp = char.HumanoidRootPart
 
-    local alvoPart = destino
-    if typeof(destino) == "Instance" and destino:IsA("Model") then
-        alvoPart = destino.PrimaryPart or destino:FindFirstChildWhichIsA("BasePart", true)
-    end
-    
-    local targetPos = targetPosForcado
-    if typeof(alvoPart) == "Instance" and alvoPart:IsA("BasePart") then
-        targetPos = ObterPosicaoNaFrente(alvoPart)
-    end
+    local alvoPart = destino:IsA("Model") and (destino.PrimaryPart or destino:FindFirstChildWhichIsA("BasePart", true)) or destino
+    local targetPos = ObterPosicaoNaFrente(alvoPart)
 
-    LogSD("1. Preparando o motor de Pathfinding...")
+    LogSD("1. Preparando Motor...")
     PrepararFisica("LIGAR", destino)
-
-    task.wait(0.15) 
+    task.wait(0.1)
 
     local path = PathfindingService:CreatePath({
-        AgentRadius = 1.5, -- AUMENTADO PARA EVITAR BATER EM QUINAS
-        AgentHeight = 5,
-        AgentCanJump = true,
-        WaypointSpacing = 3 -- DIMINUÍDO PARA GERAR CURVAS MAIS SUAVES
+        AgentRadius = 0.8, 
+        AgentHeight = 5, 
+        AgentCanJump = true, 
+        WaypointSpacing = 3
     })
-
-    LogSD("2. Calculando Rota...")
-    local success, errorMessage = pcall(function() 
-        path:ComputeAsync(hrp.Position, targetPos) 
-    end)
     
+    path:ComputeAsync(hrp.Position, targetPos)
     PrepararFisica("DESLIGAR", destino)
 
-    if not success or (path.Status ~= Enum.PathStatus.Success and path.Status ~= Enum.PathStatus.ClosestNoPath) then
-        LogSD("❌ GPS Falhou completamente. Motivo: " .. tostring(path.Status))
+    if path.Status ~= Enum.PathStatus.Success then
+        LogSD("❌ GPS Falhou: " .. tostring(path.Status))
         return false
     end
 
     local waypoints = path:GetWaypoints()
     LogSD("✅ Rota encontrada! Andando...")
-    local bolinhasVisuais = DesenharCaminho(waypoints)
+    local bolinhas = DesenharCaminho(waypoints)
 
     for i, wp in ipairs(waypoints) do
-        if SmartDoor.CurrentWalkId ~= myId then return false end
+        if SmartDoor.CurrentWalkId ~= myId then break end
         
         if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
-        
         hum:MoveTo(wp.Position)
 
-        local tStart = tick()
-        local lastPos = hrp.Position
+        local timeout = tick()
         local checkStuck = tick()
-        
-        -- O último ponto precisa de uma precisão maior (1.0), os do meio podem ser mais folgados (2.0)
-        local isLastWaypoint = (i == #waypoints)
-        local distanciaTolerancia = isLastWaypoint and 1.0 or 2.0
+        local lastPos = hrp.Position
 
         while true do
-            if SmartDoor.CurrentWalkId ~= myId then return false end
+            if SmartDoor.CurrentWalkId ~= myId then break end
             
+            -- Ignora a altura pra não bugar a distância
             local pPos = Vector3.new(hrp.Position.X, 0, hrp.Position.Z)
             local wPos = Vector3.new(wp.Position.X, 0, wp.Position.Z)
             
-            -- Se chegou na tolerância, apaga a bolinha e vai pro próximo!
-            if (pPos - wPos).Magnitude <= distanciaTolerancia then
-                if bolinhasVisuais and bolinhasVisuais[i] then
-                    bolinhasVisuais[i]:Destroy()
-                end
+            local tolerancia = (i == #waypoints) and 1.2 or 2.2
+            if (pPos - wPos).Magnitude <= tolerancia then
+                EfeitoSumir(bolinhas[i])
                 break 
             end
 
             if TentarAbrirPorta() then
-                task.wait(0.5)
                 hum:MoveTo(wp.Position)
             end
 
+            -- ANTI-TRAVAMENTO
             if tick() - checkStuck > 1.0 then
                 if (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(lastPos.X, 0, lastPos.Z)).Magnitude < 0.5 then 
                     hum.Jump = true
@@ -276,10 +273,7 @@ function SmartDoor.IrPara(destino, targetPosForcado)
                 checkStuck = tick()
             end
 
-            if tick() - tStart > 4.0 then 
-                break 
-            end
-            
+            if tick() - timeout > 4 then break end
             task.wait()
         end
     end
@@ -287,11 +281,11 @@ function SmartDoor.IrPara(destino, targetPosForcado)
     local distFinal = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
     if distFinal < 6.5 then
         hum:MoveTo(hrp.Position)
-        LogSD("🎯 Chegou no alvo com sucesso!")
+        LogSD("🎯 Destino Alcançado!")
         return true
     end
     
-    LogSD("⚠️ Rota terminou, mas ficou longe do alvo.")
+    LogSD("⚠️ Rota terminou, mas ficou longe.")
     return false
 end
 
@@ -314,7 +308,7 @@ sg.Name = "TestSmartDoorGUI"
 sg.Parent = CoreGui
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 220, 0, 330) -- Aumentei para caber o novo botão
+frame.Size = UDim2.new(0, 220, 0, 330)
 frame.Position = UDim2.new(0.5, -110, 0.2, 0)
 frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 frame.BorderSizePixel = 2
@@ -348,7 +342,6 @@ statusLog.Text = "Aguardando..."
 statusLog.Parent = frame
 _G.StatusTextoTeste = statusLog
 
--- Botão Toggle Bolinhas
 local btnVis = Instance.new("TextButton")
 btnVis.Size = UDim2.new(0, 180, 0, 30)
 btnVis.BackgroundColor3 = _G.MostrarBolinhas and Color3.fromRGB(40, 150, 40) or Color3.fromRGB(150, 40, 40)
@@ -383,6 +376,7 @@ local function EncontrarMovel(tipo)
 
     LogSD("Buscando na casa...")
 
+    -- VOLTOU PARA A BUSCA LEVE NA PASTA 'Counters' (Mais segura)
     for _, plot in pairs(plots:GetChildren()) do
         if plot:FindFirstChild("House") and plot.House:FindFirstChild("Counters") then
             for _, obj in pairs(plot.House.Counters:GetChildren()) do
@@ -391,7 +385,7 @@ local function EncontrarMovel(tipo)
                 
                 if tipo == "Fridge" and (name:find("fridge") or name:find("refrigerator") or name:find("icebox")) then isMatch = true end
                 if tipo == "Stove" and (name:find("stove") or name:find("oven") or name:find("cook")) then isMatch = true end
-                if tipo == "Cover" and (name:find("counter") or name:find("island")) then isMatch = true end
+                if tipo == "Cover" and (name:find("counter") or name:find("island") or name:find("cabinet")) then isMatch = true end
 
                 if isMatch then
                     local alvoPart = obj
