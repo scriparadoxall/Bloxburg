@@ -1,16 +1,16 @@
 local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
+local VirtualUser = game:GetService("VirtualUser")
 
 -- LIMPEZA DE LOOPS FANTASMAS ANTES DE CARREGAR
--- Isso impede que o boneco fique bobó ao reexecutar o script
 if _G.BloxburgChef and typeof(_G.BloxburgChef.Stop) == "function" then
     pcall(function() _G.BloxburgChef.Stop() end)
 end
 if _G.SmartDoor and typeof(_G.SmartDoor.Cancelar) == "function" then
     pcall(function() _G.SmartDoor.Cancelar() end)
 end
-task.wait(0.2) -- Dá um tempinho para a thread antiga morrer
+task.wait(0.2) 
 
 local smartDoorURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/smart_door.lua?t=" .. tostring(tick())
 local loadDoorFunc, errDoor = loadstring(game:HttpGet(smartDoorURL))
@@ -58,9 +58,9 @@ local function LoadMainHub()
 
     local MainFrame = Instance.new("Frame", ScriparadoxallUI)
     MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    MainFrame.Position = UDim2.new(0.5, -275, 0.5, -125)
-    MainFrame.Size = UDim2.new(0, 550, 0, 250)
-    MainFrame.ClipsDescendants = false 
+    MainFrame.Position = UDim2.new(0.5, -275, 0.5, -150)
+    MainFrame.Size = UDim2.new(0, 550, 0, 300)
+    MainFrame.ClipsDescendants = true 
     MainFrame.Active = true
     Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
 
@@ -88,21 +88,110 @@ local function LoadMainHub()
     local tweenInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
     local function MinimizeHub()
         if not MainFrame.Visible then return end
-        TweenService:Create(MainFrame, tweenInfo, {Size = UDim2.new(0, 550, 0, 0), BackgroundTransparency = 1}):Play()
-        for _, child in pairs(MainFrame:GetChildren()) do if child:IsA("GuiObject") and not child:IsA("UICorner") then child.Visible = false end end
+        TweenService:Create(MainFrame, tweenInfo, {Size = UDim2.new(0, 550, 0, 0)}):Play()
+        task.wait(0.4)
         MainFrame.Visible = false; OpenButton.Visible = true
         TweenService:Create(OpenButton, tweenInfo, {Size = UDim2.new(0, 50, 0, 50)}):Play()
     end
     HideButton.MouseButton1Click:Connect(MinimizeHub)
     OpenButton.MouseButton1Click:Connect(function()
         TweenService:Create(OpenButton, tweenInfo, {Size = UDim2.new(0, 0, 0, 0)}):Play()
-        OpenButton.Visible = false; MainFrame.Visible = true; MainFrame.BackgroundTransparency = 0
-        TweenService:Create(MainFrame, tweenInfo, {Size = UDim2.new(0, 550, 0, 250)}):Play()
-        for _, child in pairs(MainFrame:GetChildren()) do if child:IsA("GuiObject") then child.Visible = true end end
+        OpenButton.Visible = false; MainFrame.Visible = true; 
+        TweenService:Create(MainFrame, tweenInfo, {Size = UDim2.new(0, 550, 0, 300)}):Play()
     end)
 
-    local LogPanel = Instance.new("ScrollingFrame", MainFrame)
-    LogPanel.BackgroundColor3 = Color3.fromRGB(12, 12, 12); LogPanel.Position = UDim2.new(0, 190, 0, 50); LogPanel.Size = UDim2.new(0, 340, 0, 180); LogPanel.ScrollBarThickness = 4; LogPanel.BorderSizePixel = 0
+    -- ESTRUTURA DE ABAS (TABS)
+    local Sidebar = Instance.new("Frame", MainFrame)
+    Sidebar.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    Sidebar.Position = UDim2.new(0, 0, 0, 41)
+    Sidebar.Size = UDim2.new(0, 130, 1, -41)
+    Sidebar.BorderSizePixel = 0
+
+    local SidebarLayout = Instance.new("UIListLayout", Sidebar)
+    SidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    SidebarLayout.Padding = UDim.new(0, 2)
+
+    local PagesContainer = Instance.new("Frame", MainFrame)
+    PagesContainer.BackgroundTransparency = 1
+    PagesContainer.Position = UDim2.new(0, 135, 0, 45)
+    PagesContainer.Size = UDim2.new(1, -140, 1, -50)
+
+    local tabs = {"Skills", "Works", "Utils", "Automations", "Config"}
+    local pageFrames = {}
+    local tabButtons = {}
+
+    for i, tabName in ipairs(tabs) do
+        -- Criar Botões Laterais
+        local TabBtn = Instance.new("TextButton", Sidebar)
+        TabBtn.Size = UDim2.new(1, 0, 0, 35)
+        TabBtn.BackgroundColor3 = i == 4 and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(20, 20, 20) -- Seleciona Automation por padrão
+        TabBtn.BorderSizePixel = 0
+        TabBtn.Font = Enum.Font.GothamSemibold
+        TabBtn.Text = tabName
+        TabBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
+        TabBtn.TextSize = 13
+        tabButtons[tabName] = TabBtn
+
+        -- Criar Páginas
+        local Page = Instance.new("Frame", PagesContainer)
+        Page.Size = UDim2.new(1, 0, 1, 0)
+        Page.BackgroundTransparency = 1
+        Page.Visible = (i == 4) -- Mostra a aba Automation por padrão
+        pageFrames[tabName] = Page
+
+        -- Lógica de troca de abas
+        TabBtn.MouseButton1Click:Connect(function()
+            for name, p in pairs(pageFrames) do p.Visible = (name == tabName) end
+            for name, btn in pairs(tabButtons) do 
+                btn.BackgroundColor3 = (name == tabName) and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(20, 20, 20)
+            end
+        end)
+    end
+
+    --------------------------
+    -- CONTEÚDO: SKILLS
+    --------------------------
+    local SkillsTitle = Instance.new("TextLabel", pageFrames["Skills"])
+    SkillsTitle.BackgroundTransparency = 1; SkillsTitle.Size = UDim2.new(1, 0, 1, 0)
+    SkillsTitle.Font = Enum.Font.GothamBold; SkillsTitle.Text = "Skills content coming soon..."; SkillsTitle.TextColor3 = Color3.fromRGB(100, 100, 100); SkillsTitle.TextSize = 16
+
+    --------------------------
+    -- CONTEÚDO: WORKS
+    --------------------------
+    local WorksTitle = Instance.new("TextLabel", pageFrames["Works"])
+    WorksTitle.BackgroundTransparency = 1; WorksTitle.Size = UDim2.new(1, 0, 1, 0)
+    WorksTitle.Font = Enum.Font.GothamBold; WorksTitle.Text = "Coming Soon"; WorksTitle.TextColor3 = Color3.fromRGB(255, 200, 50); WorksTitle.TextSize = 22
+
+    --------------------------
+    -- CONTEÚDO: UTILS
+    --------------------------
+    local DonateBtn = Instance.new("TextButton", pageFrames["Utils"])
+    DonateBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 100); DonateBtn.Position = UDim2.new(0, 10, 0, 10); DonateBtn.Size = UDim2.new(0, 160, 0, 40)
+    DonateBtn.Font = Enum.Font.GothamBold; DonateBtn.Text = "💸 Donate Money"; DonateBtn.TextColor3 = Color3.fromRGB(255, 255, 255); DonateBtn.TextSize = 14
+    Instance.new("UICorner", DonateBtn).CornerRadius = UDim.new(0, 6)
+
+    --------------------------
+    -- CONTEÚDO: AUTOMATIONS (Farm + Logs)
+    --------------------------
+    local AutoPage = pageFrames["Automations"]
+    
+    local selectedFoodUI = "Hot Dogs"
+    local FoodBtn = Instance.new("TextButton", AutoPage)
+    FoodBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); FoodBtn.Position = UDim2.new(0, 5, 0, 5); FoodBtn.Size = UDim2.new(0, 160, 0, 35)
+    FoodBtn.Font = Enum.Font.GothamSemibold; FoodBtn.Text = "🍕 " .. selectedFoodUI; FoodBtn.TextColor3 = Color3.fromRGB(255, 255, 255); FoodBtn.TextSize = 12
+    Instance.new("UICorner", FoodBtn).CornerRadius = UDim.new(0, 6)
+
+    local FarmBtn = Instance.new("TextButton", AutoPage)
+    FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40); FarmBtn.Position = UDim2.new(0, 5, 0, 50); FarmBtn.Size = UDim2.new(0, 160, 0, 40)
+    FarmBtn.Font = Enum.Font.GothamBold; FarmBtn.Text = "▶ Iniciar Farm"; FarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255); FarmBtn.TextSize = 14
+    Instance.new("UICorner", FarmBtn).CornerRadius = UDim.new(0, 6)
+
+    local PremiumLabel = Instance.new("TextLabel", AutoPage)
+    PremiumLabel.BackgroundTransparency = 1; PremiumLabel.Position = UDim2.new(0, 5, 0, 100); PremiumLabel.Size = UDim2.new(0, 160, 0, 30)
+    PremiumLabel.Font = Enum.Font.GothamBold; PremiumLabel.Text = "⭐ Premium (Coming soon)"; PremiumLabel.TextColor3 = Color3.fromRGB(255, 170, 0); PremiumLabel.TextSize = 12
+
+    local LogPanel = Instance.new("ScrollingFrame", AutoPage)
+    LogPanel.BackgroundColor3 = Color3.fromRGB(12, 12, 12); LogPanel.Position = UDim2.new(0, 180, 0, 5); LogPanel.Size = UDim2.new(1, -185, 1, -10); LogPanel.ScrollBarThickness = 4; LogPanel.BorderSizePixel = 0
     Instance.new("UICorner", LogPanel).CornerRadius = UDim.new(0, 6)
     local LogLayout = Instance.new("UIListLayout", LogPanel); LogLayout.SortOrder = Enum.SortOrder.LayoutOrder; LogLayout.Padding = UDim.new(0, 2)
 
@@ -116,14 +205,9 @@ local function LoadMainHub()
     end
     _G.BloxburgChef_AddLog("Módulos carregados com sucesso!", Color3.fromRGB(50, 255, 255))
 
-    local selectedFoodUI = "Hot Dogs"
-    local FoodBtn = Instance.new("TextButton", MainFrame)
-    FoodBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); FoodBtn.Position = UDim2.new(0, 15, 0, 50); FoodBtn.Size = UDim2.new(0, 160, 0, 35)
-    FoodBtn.Font = Enum.Font.GothamSemibold; FoodBtn.Text = "🍕 " .. selectedFoodUI; FoodBtn.TextColor3 = Color3.fromRGB(255, 255, 255); FoodBtn.TextSize = 12
-    Instance.new("UICorner", FoodBtn).CornerRadius = UDim.new(0, 6)
-
-    local FoodListPanel = Instance.new("ScrollingFrame", MainFrame)
-    FoodListPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 25); FoodListPanel.Position = UDim2.new(0, 15, 0, 90); FoodListPanel.Size = UDim2.new(0, 160, 0, 145); FoodListPanel.ScrollBarThickness = 4; FoodListPanel.ZIndex = 10; FoodListPanel.Visible = false
+    -- Painel de comidas (escondido por padrão, ZIndex alto)
+    local FoodListPanel = Instance.new("ScrollingFrame", AutoPage)
+    FoodListPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 25); FoodListPanel.Position = UDim2.new(0, 5, 0, 45); FoodListPanel.Size = UDim2.new(0, 160, 0, 145); FoodListPanel.ScrollBarThickness = 4; FoodListPanel.ZIndex = 10; FoodListPanel.Visible = false
     Instance.new("UICorner", FoodListPanel).CornerRadius = UDim.new(0, 6)
     local FoodLayout = Instance.new("UIListLayout", FoodListPanel); FoodLayout.Padding = UDim.new(0, 2)
 
@@ -135,11 +219,6 @@ local function LoadMainHub()
     end
     FoodLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() FoodListPanel.CanvasSize = UDim2.new(0, 0, 0, FoodLayout.AbsoluteContentSize.Y) end)
     FoodBtn.MouseButton1Click:Connect(function() FoodListPanel.Visible = not FoodListPanel.Visible end)
-
-    local FarmBtn = Instance.new("TextButton", MainFrame)
-    FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40); FarmBtn.Position = UDim2.new(0, 15, 0, 95); FarmBtn.Size = UDim2.new(0, 160, 0, 40)
-    FarmBtn.Font = Enum.Font.GothamBold; FarmBtn.Text = "▶ Iniciar Farm"; FarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255); FarmBtn.TextSize = 14
-    Instance.new("UICorner", FarmBtn).CornerRadius = UDim.new(0, 6)
 
     local isUIActive = false
     FarmBtn.MouseButton1Click:Connect(function()
@@ -153,10 +232,46 @@ local function LoadMainHub()
             FarmBtn.Text = "🛑 Parar Farm"
             FarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
             FoodListPanel.Visible = false
-            MinimizeHub()
             _G.BloxburgChef.Start(selectedFoodUI)
         end
     end)
+
+    --------------------------
+    -- CONTEÚDO: CONFIG (Úteis)
+    --------------------------
+    local ConfigPage = pageFrames["Config"]
+    
+    local AntiAfkBtn = Instance.new("TextButton", ConfigPage)
+    AntiAfkBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); AntiAfkBtn.Position = UDim2.new(0, 10, 0, 10); AntiAfkBtn.Size = UDim2.new(0, 200, 0, 40)
+    AntiAfkBtn.Font = Enum.Font.GothamSemibold; AntiAfkBtn.Text = "🛡️ Anti-AFK [OFF]"; AntiAfkBtn.TextColor3 = Color3.fromRGB(255, 100, 100); AntiAfkBtn.TextSize = 14
+    Instance.new("UICorner", AntiAfkBtn).CornerRadius = UDim.new(0, 6)
+
+    local antiAfkConnection
+    local isAntiAfkOn = false
+    AntiAfkBtn.MouseButton1Click:Connect(function()
+        isAntiAfkOn = not isAntiAfkOn
+        if isAntiAfkOn then
+            AntiAfkBtn.Text = "🛡️ Anti-AFK [ON]"
+            AntiAfkBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
+            -- Conexão nativa para enganar o Roblox
+            antiAfkConnection = Players.LocalPlayer.Idled:Connect(function()
+                VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+                task.wait(1)
+                VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+            end)
+            _G.BloxburgChef_AddLog("Anti-AFK ativado!", Color3.fromRGB(100, 255, 100))
+        else
+            AntiAfkBtn.Text = "🛡️ Anti-AFK [OFF]"
+            AntiAfkBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+            if antiAfkConnection then antiAfkConnection:Disconnect() end
+            _G.BloxburgChef_AddLog("Anti-AFK desativado.", Color3.fromRGB(255, 100, 100))
+        end
+    end)
+    
+    local ConfigNote = Instance.new("TextLabel", ConfigPage)
+    ConfigNote.BackgroundTransparency = 1; ConfigNote.Position = UDim2.new(0, 10, 0, 60); ConfigNote.Size = UDim2.new(1, -20, 0, 40)
+    ConfigNote.Font = Enum.Font.Gotham; ConfigNote.Text = "O Anti-AFK previne que você seja desconectado do jogo após 20 minutos de inatividade enquanto farma."; ConfigNote.TextColor3 = Color3.fromRGB(150, 150, 150); ConfigNote.TextSize = 11; ConfigNote.TextWrapped = true; ConfigNote.TextXAlignment = Enum.TextXAlignment.Left
+
 end
 
 if hideWarning then
