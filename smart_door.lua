@@ -17,7 +17,6 @@ end
 -- 🔴 DESENHAR O CAMINHO (VISUALIZADOR DE GPS)
 -- ==========================================
 local function DesenharCaminho(waypoints)
-    -- Limpa o caminho antigo
     local folder = workspace:FindFirstChild("CaminhoSmartDoor")
     if folder then folder:Destroy() end
     
@@ -45,7 +44,7 @@ local function PrepararFisica(estado, alvo)
     local plots = workspace:FindFirstChild("Plots")
     if not plots then return end
 
-    -- 1. Ignorar todas as portas da casa
+    -- 1. Ignorar todas as portas da casa (Continua intacto!)
     for _, plot in pairs(plots:GetChildren()) do
         local house = plot:FindFirstChild("House")
         if house then
@@ -68,7 +67,7 @@ local function PrepararFisica(estado, alvo)
         end
     end
 
-    -- 2. Ignorar o fogão/geladeira para o GPS conseguir chegar no centro dele
+    -- 2. Ignorar o alvo para o GPS
     if alvo then
         local model = alvo:FindFirstAncestorWhichIsA("Model") or alvo
         for _, part in pairs(model:GetDescendants()) do
@@ -87,7 +86,7 @@ local function PrepararFisica(estado, alvo)
 end
 
 -- ==========================================
--- 👁️ ABRIR PORTA COM A INTERFACE
+-- 👁️ ABRIR PORTA COM A INTERFACE (Continua intacto!)
 -- ==========================================
 local function TentarAbrirPorta()
     local p = Players.LocalPlayer
@@ -112,7 +111,6 @@ local function TentarAbrirPorta()
             lastDoorClick = tick()
             LogSD("🚪 Porta Fechada! Clicando para abrir...")
             
-            -- Clique Mobile
             if botao and getconnections then
                 pcall(function()
                     for _, c in pairs(getconnections(botao.MouseButton1Click)) do c:Fire() end
@@ -120,21 +118,71 @@ local function TentarAbrirPorta()
                 end)
             end
             
-            -- Clique PC (Fallback)
             task.spawn(function()
                 VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
                 task.wait(0.1)
                 VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
             end)
         end
-        return true -- Retorna que está lidando com uma porta
+        return true 
     end
     
-    return false -- Não tem porta fechada na frente
+    return false 
 end
 
 -- ==========================================
--- 🚶 MOTOR DE CAMINHADA (CORRIGIDO)
+-- 🎯 RADAR: ACHA A FRENTE DO MÓVEL (NOVO!)
+-- ==========================================
+local function ObterPosicaoNaFrente(alvoPart)
+    local pos = alvoPart.Position
+    local cf = alvoPart.CFrame
+    
+    -- Dispara para 4 lados (Frente, Trás, Esquerda, Direita do móvel)
+    local direcoes = {
+        cf.LookVector,
+        -cf.LookVector,
+        cf.RightVector,
+        -cf.RightVector
+    }
+    
+    local melhorDirecao = Vector3.new(0, 0, 1)
+    local maiorEspacoLivre = -1
+    
+    local rp = RaycastParams.new()
+    rp.FilterType = Enum.RaycastFilterType.Exclude
+    -- Ignora o player e o próprio móvel para o raio não bater neles mesmos
+    local model = alvoPart:FindFirstAncestorWhichIsA("Model") or alvoPart
+    rp.FilterDescendantsInstances = {Players.LocalPlayer.Character, model}
+    
+    for _, dir in ipairs(direcoes) do
+        -- Raio de 10 blocos de distância
+        local resultado = workspace:Raycast(pos, dir * 10, rp)
+        local distanciaLivre = 10
+        
+        -- Se bateu em algo (tipo a parede), anota a distância
+        if resultado then
+            distanciaLivre = (resultado.Position - pos).Magnitude
+        end
+        
+        -- Pega a direção que tem mais espaço sobrando
+        if distanciaLivre > maiorEspacoLivre then
+            maiorEspacoLivre = distanciaLivre
+            melhorDirecao = dir
+        end
+    end
+    
+    -- Calcula o alvo: 3 passos na direção mais livre (oposto da parede)
+    local posicaoAlvo = pos + (melhorDirecao * 3)
+    
+    -- Pega a altura do chão do player pra não tentar voar
+    local hrp = Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local alturaY = hrp and hrp.Position.Y or pos.Y
+    
+    return Vector3.new(posicaoAlvo.X, alturaY, posicaoAlvo.Z)
+end
+
+-- ==========================================
+-- 🚶 MOTOR DE CAMINHADA
 -- ==========================================
 function SmartDoor.IrPara(destino, targetPosForcado)
     SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
@@ -145,16 +193,23 @@ function SmartDoor.IrPara(destino, targetPosForcado)
     local hum = char.Humanoid
     local hrp = char.HumanoidRootPart
 
-    -- Proteção caso 'destino' seja um Model em vez de BasePart
-    local targetPos = targetPosForcado or (destino:IsA("BasePart") and destino.Position or destino.PrimaryPart.Position)
+    -- Verifica qual é o alvo de verdade e acha a parte da frente dele
+    local alvoPart = destino
+    if typeof(destino) == "Instance" and destino:IsA("Model") then
+        alvoPart = destino.PrimaryPart or destino:FindFirstChildWhichIsA("BasePart", true)
+    end
+    
+    -- Usa a posição forçada ou calcula a frente pra desviar da parede
+    local targetPos = targetPosForcado
+    if typeof(alvoPart) == "Instance" and alvoPart:IsA("BasePart") then
+        targetPos = ObterPosicaoNaFrente(alvoPart)
+    end
 
     LogSD("1. Preparando o motor de Pathfinding...")
     PrepararFisica("LIGAR", destino)
 
-    -- CORREÇÃO 1: Dar tempo para o Roblox processar o Fantasma na NavMesh
     task.wait(0.15) 
 
-    -- Criador de Rota Simples e Direto (Sem frescuras)
     local path = PathfindingService:CreatePath({
         AgentRadius = 1.0, 
         AgentHeight = 5,
@@ -162,14 +217,13 @@ function SmartDoor.IrPara(destino, targetPosForcado)
         WaypointSpacing = 4
     })
 
-    LogSD("2. Calculando Rota...")
+    LogSD("2. Calculando Rota para a FRENTE do móvel...")
     local success, errorMessage = pcall(function() 
         path:ComputeAsync(hrp.Position, targetPos) 
     end)
     
     PrepararFisica("DESLIGAR", destino)
 
-    -- Aceita a rota MESMO se ele disser que não chega até o final absoluto (ClosestNoPath)
     if not success or (path.Status ~= Enum.PathStatus.Success and path.Status ~= Enum.PathStatus.ClosestNoPath) then
         LogSD("❌ GPS Falhou completamente. Motivo: " .. tostring(path.Status))
         return false
@@ -177,7 +231,7 @@ function SmartDoor.IrPara(destino, targetPosForcado)
 
     local waypoints = path:GetWaypoints()
     LogSD("✅ Rota encontrada! Desenhando pontos...")
-    DesenharCaminho(waypoints) -- Mostra as bolinhas no chão
+    DesenharCaminho(waypoints)
 
     for i, wp in ipairs(waypoints) do
         if SmartDoor.CurrentWalkId ~= myId then return false end
@@ -193,22 +247,18 @@ function SmartDoor.IrPara(destino, targetPosForcado)
         while true do
             if SmartDoor.CurrentWalkId ~= myId then return false end
             
-            -- CORREÇÃO 2: Ignorar o Eixo Y (Altura) na medição de distância
             local pPos = Vector3.new(hrp.Position.X, 0, hrp.Position.Z)
             local wPos = Vector3.new(wp.Position.X, 0, wp.Position.Z)
             
             if (pPos - wPos).Magnitude <= 3.5 then
-                break -- Chegou no ponto! Passa pro próximo wp.
+                break 
             end
 
-            -- Lida com portas
             if TentarAbrirPorta() then
-                -- CORREÇÃO 3: Apenas aguarda a animação e reenvia a instrução de andar
                 task.wait(0.5)
                 hum:MoveTo(wp.Position)
             end
 
-            -- Anti-Stuck: Se em 1 segundo ele andou menos de meio metro, ele travou
             if tick() - checkStuck > 1.0 then
                 if (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(lastPos.X, 0, lastPos.Z)).Magnitude < 0.5 then 
                     hum.Jump = true
@@ -218,7 +268,6 @@ function SmartDoor.IrPara(destino, targetPosForcado)
                 checkStuck = tick()
             end
 
-            -- Se ficar mais de 4 segundos tentando chegar no mesmo ponto, aborta o ponto e vai pro próximo
             if tick() - tStart > 4.0 then 
                 LogSD("⚠️ Ponto demorou muito. Pulando...")
                 break 
@@ -228,7 +277,6 @@ function SmartDoor.IrPara(destino, targetPosForcado)
         end
     end
 
-    -- Checagem de sucesso final (Ignorando altura novamente)
     local distFinal = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
     if distFinal < 6.5 then
         hum:MoveTo(hrp.Position)
@@ -240,7 +288,6 @@ function SmartDoor.IrPara(destino, targetPosForcado)
     return false
 end
 
--- Função utilitária para parar o farm/caminhada atual
 function SmartDoor.Cancelar()
     SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
     LogSD("🚫 Caminhada cancelada.")
@@ -292,17 +339,15 @@ statusLog.Text = "Aguardando..."
 statusLog.Parent = frame
 _G.StatusTextoTeste = statusLog
 
--- Busca 100% à prova de falhas
 local function EncontrarMovel(tipo)
     local plots = workspace:FindFirstChild("Plots")
-    if not plots then return nil, nil end
+    if not plots then return nil end
     
     local char = Players.LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return nil, nil end
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return nil end
     local myPos = char.HumanoidRootPart.Position
     
     local nearestObj = nil
-    local nearestPos = nil
     local nearestDist = math.huge
 
     LogSD("Buscando na casa...")
@@ -318,7 +363,6 @@ local function EncontrarMovel(tipo)
                 if tipo == "Cover" and (name:find("counter") or name:find("island")) then isMatch = true end
 
                 if isMatch then
-                    -- Vai direto no ObjectModel (ou na peça primária)
                     local alvoPart = obj
                     local objModel = obj:FindFirstChild("ObjectModel")
                     if objModel then
@@ -332,14 +376,13 @@ local function EncontrarMovel(tipo)
                         if dist < nearestDist then
                             nearestDist = dist
                             nearestObj = alvoPart
-                            nearestPos = partParaMedir.Position
                         end
                     end
                 end
             end
         end
     end
-    return nearestObj, nearestPos
+    return nearestObj
 end
 
 local function CriarBotaoTeste(label, busca)
@@ -361,11 +404,11 @@ local function CriarBotaoTeste(label, busca)
         b.Text = "Procurando..."
         
         task.spawn(function()
-            local success, alvo, posExata = pcall(function()
+            local success, alvo = pcall(function()
                 return EncontrarMovel(busca)
             end)
             
-            if not success or not alvo or not posExata then
+            if not success or not alvo then
                 b.Text = label
                 LogSD("❌ Erro ou Móvel não achado.")
                 return
@@ -373,7 +416,8 @@ local function CriarBotaoTeste(label, busca)
             
             b.Text = "Andando..."
             LogSD("Alvo localizado. Acionando GPS...")
-            SmartDoor.IrPara(alvo, posExata)
+            -- Agora só mandamos o objeto pro IrPara, ele calcula a frente sozinho!
+            SmartDoor.IrPara(alvo)
             b.Text = label 
         end)
     end)
