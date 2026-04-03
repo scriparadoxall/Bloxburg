@@ -13,7 +13,7 @@ local currentMacroId = 0
 local selectedFood = "Hot Dogs"
 
 -- =========================================================================
--- 📦 GERENCIADOR DE MÓDULOS (Nomes Exatos Baseados no GitHub)
+-- 📦 GERENCIADOR DE MÓDULOS
 -- =========================================================================
 local ModulosCarregados = {}
 
@@ -115,7 +115,7 @@ local function SafeClick(element)
 end
 
 -- =========================================================================
--- 🧠 INTEGRAÇÃO COM CÉREBRO E PERNAS (Simplificada para a nova SmartDoor)
+-- 🧠 INTEGRAÇÃO COM CÉREBRO E PERNAS
 -- =========================================================================
 local function MoveToStation(stationType)
     local doorSystem = CarregarModulo("smart_door.lua")
@@ -124,16 +124,13 @@ local function MoveToStation(stationType)
         return false
     end
 
-    -- O próprio smart_door agora acha o alvo, lida com colisões e acha a frente do móvel.
-    -- Vamos passar o nome da estação (Fridge, Stove, Cover) pra ele!
     local buscaFormatada = ""
     if stationType == "fridge" then buscaFormatada = "Fridge"
     elseif stationType == "stove" then buscaFormatada = "Stove"
     elseif stationType == "counter" then buscaFormatada = "Cover"
     end
 
-    -- Usamos a função de busca integrada que colocamos no final do seu smart_door de teste
-    -- Como a gente removeu a interface, precisamos de um buscador rápido aqui:
+    -- CORREÇÃO: Busca ampla varrendo toda a casa para nunca perder o fogão
     local function AcharNaCasa(tipo)
         local plots = workspace:FindFirstChild("Plots")
         if not plots then return nil end
@@ -144,28 +141,32 @@ local function MoveToStation(stationType)
         local nearestDist = math.huge
 
         for _, plot in pairs(plots:GetChildren()) do
-            if plot:FindFirstChild("House") and plot.House:FindFirstChild("Counters") then
-                for _, obj in pairs(plot.House.Counters:GetChildren()) do
-                    local name = string.lower(obj.Name)
-                    local isMatch = false
-                    if tipo == "Fridge" and (name:find("fridge") or name:find("refrigerator") or name:find("icebox")) then isMatch = true end
-                    if tipo == "Stove" and (name:find("stove") or name:find("oven") or name:find("cook")) then isMatch = true end
-                    if tipo == "Cover" and (name:find("counter") or name:find("island") or name:find("cabinet")) then isMatch = true end
+            local house = plot:FindFirstChild("House")
+            if house then
+                for _, obj in pairs(house:GetDescendants()) do
+                    if obj:IsA("Model") then
+                        local name = string.lower(obj.Name)
+                        local isMatch = false
+                        
+                        if tipo == "Fridge" and (name:find("fridge") or name:find("refrigerator") or name:find("icebox")) then isMatch = true end
+                        if tipo == "Stove" and (name:find("stove") or name:find("oven") or name:find("cook")) then isMatch = true end
+                        if tipo == "Cover" and (name:find("counter") or name:find("island") or name:find("cabinet")) then isMatch = true end
 
-                    if isMatch then
-                        local alvoPart = obj
-                        local objModel = obj:FindFirstChild("ObjectModel")
-                        if objModel then
-                            alvoPart = objModel:FindFirstChild("OvenDoor") or objModel:FindFirstChild("MainDoor") or objModel:FindFirstChild("Door") or objModel
-                        end
-                        
-                        local partParaMedir = alvoPart:IsA("Model") and (alvoPart.PrimaryPart or alvoPart:FindFirstChildWhichIsA("BasePart", true)) or alvoPart
-                        
-                        if partParaMedir and partParaMedir:IsA("BasePart") then
-                            local dist = (myPos - partParaMedir.Position).Magnitude
-                            if dist < nearestDist then
-                                nearestDist = dist
-                                nearestObj = alvoPart
+                        if isMatch then
+                            local alvoPart = obj
+                            local objModel = obj:FindFirstChild("ObjectModel")
+                            if objModel then
+                                alvoPart = objModel:FindFirstChild("OvenDoor") or objModel:FindFirstChild("MainDoor") or objModel:FindFirstChild("Door") or objModel
+                            end
+                            
+                            local partParaMedir = alvoPart:IsA("Model") and (alvoPart.PrimaryPart or alvoPart:FindFirstChildWhichIsA("BasePart", true)) or alvoPart
+                            
+                            if partParaMedir and partParaMedir:IsA("BasePart") then
+                                local dist = (myPos - partParaMedir.Position).Magnitude
+                                if dist < nearestDist then
+                                    nearestDist = dist
+                                    nearestObj = alvoPart
+                                end
                             end
                         end
                     end
@@ -177,7 +178,7 @@ local function MoveToStation(stationType)
 
     local alvo = AcharNaCasa(buscaFormatada)
     if not alvo then
-        Log("ERRO: Nenhuma '" .. stationType .. "' acessível!", Color3.fromRGB(255, 100, 100))
+        Log("ERRO: Nenhuma '" .. stationType .. "' acessível! Tente mover a câmera.", Color3.fromRGB(255, 100, 100))
         return false 
     end
 
@@ -186,20 +187,30 @@ local function MoveToStation(stationType)
     if chegou_no_destino then
         local hrp = LocalPlayer.Character.HumanoidRootPart
         
-        -- Garante que o alvo tem uma posição para olhar
+        -- Vira o boneco de frente para o móvel
         local posOlhar = alvo:IsA("Model") and (alvo.PrimaryPart and alvo.PrimaryPart.Position or alvo:GetPivot().Position) or alvo.Position
-        
         hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(posOlhar.X, hrp.Position.Y, posOlhar.Z))
 
         local camSystem = CarregarModulo("smart_cam")
-        if camSystem then
-            camSystem.OlharPara(alvo)
-        end
+        if camSystem then camSystem.OlharPara(alvo) end
 
         task.wait(0.2)
+        
+        -- CORREÇÃO PARA MOBILE: Interage forçando o botão na tela
+        local interactUI = PlayerGui:FindFirstChild("_interactUI")
+        if interactUI then
+            local center = interactUI:FindFirstChild("Center")
+            local btn = center and center:FindFirstChild("Button")
+            if btn and btn.Visible then
+                SafeClick(btn)
+            end
+        end
+        
+        -- Fallback: Aperta a tecla 'E'
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
         task.wait(0.05)
         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+        
         return true
     end
 
