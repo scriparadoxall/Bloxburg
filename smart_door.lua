@@ -6,89 +6,61 @@ local CoreGui = game:GetService("CoreGui")
 local SmartDoor = {} 
 SmartDoor.CurrentWalkId = 0 
 local lastDoorClick = 0
-
--- Variável global para a tela de teste
 _G.StatusTextoTeste = nil
 
 local function LogSD(msg)
-    -- Manda pra UI
     if _G.StatusTextoTeste then _G.StatusTextoTeste.Text = msg end
-    -- Manda pro Hub original se existir
     if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog(msg, Color3.fromRGB(255, 170, 0)) end
+    print("[SmartDoor] " .. msg)
 end
 
 -- ==========================================
--- 🗺️ CONFIGURAÇÃO DE GPS (PORTAS E CALÇADAS)
+-- 🗺️ CONFIGURAÇÃO DE GPS (UMA ÚNICA VEZ)
 -- ==========================================
-local function ConfigurarMapa(estado)
-    print("[DEBUG-MAPA] Configurando Mapa: " .. estado)
+-- Isso evita o erro de "set the parent" que estava crashando seu executor
+local function ConfigurarMapaUmaVez()
+    if _G.MapaBloxburgConfigurado then return end
+    
+    LogSD("Configurando Mapa (Isso só acontece 1 vez)...")
     local plots = workspace:FindFirstChild("Plots")
     if not plots then return end
 
-    for _, plot in pairs(plots:GetChildren()) do
-        local house = plot:FindFirstChild("House")
-        if house then
-            for _, obj in pairs(house:GetDescendants()) do
-                if obj:IsA("Model") and (string.find(string.lower(obj.Name), "door") or string.find(string.lower(obj.Name), "gate")) then
-                    for _, part in pairs(obj:GetDescendants()) do
-                        if part:IsA("BasePart") then
-                            if estado == "LIGAR" then
-                                if not part:FindFirstChild("IgnorarNoGPS") then
-                                    local mod = Instance.new("PathfindingModifier")
-                                    mod.Name = "IgnorarNoGPS"
-                                    mod.PassThrough = true
-                                    mod.Parent = part
-                                end
-                            elseif estado == "DESLIGAR" then
-                                local mod = part:FindFirstChild("IgnorarNoGPS")
-                                if mod then mod:Destroy() end
-                            end
-                        end
-                    end
-                end
-            end
-
-            local caminhos = house:FindFirstChild("Paths")
-            if caminhos then
-                for _, part in pairs(caminhos:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        if estado == "LIGAR" then
-                            if not part:FindFirstChild("PrioridadeCaminho") then
+    pcall(function()
+        for _, plot in pairs(plots:GetChildren()) do
+            local house = plot:FindFirstChild("House")
+            if house then
+                -- 1. Ignorar Portas no GPS permanentemente
+                for _, obj in pairs(house:GetDescendants()) do
+                    if obj:IsA("Model") and (string.find(string.lower(obj.Name), "door") or string.find(string.lower(obj.Name), "gate")) then
+                        for _, part in pairs(obj:GetDescendants()) do
+                            if part:IsA("BasePart") and not part:FindFirstChild("IgnorarNoGPS") then
                                 local mod = Instance.new("PathfindingModifier")
-                                mod.Name = "PrioridadeCaminho"
-                                mod.ModifierId = "Calcada" 
+                                mod.Name = "IgnorarNoGPS"
+                                mod.PassThrough = true
                                 mod.Parent = part
                             end
-                        elseif estado == "DESLIGAR" then
-                            local mod = part:FindFirstChild("PrioridadeCaminho")
-                            if mod then mod:Destroy() end
+                        end
+                    end
+                end
+
+                -- 2. Prioridade Permanente nas Calçadas
+                local caminhos = house:FindFirstChild("Paths")
+                if caminhos then
+                    for _, part in pairs(caminhos:GetDescendants()) do
+                        if part:IsA("BasePart") and not part:FindFirstChild("PrioridadeCaminho") then
+                            local mod = Instance.new("PathfindingModifier")
+                            mod.Name = "PrioridadeCaminho"
+                            mod.ModifierId = "Calcada" 
+                            mod.Parent = part
                         end
                     end
                 end
             end
         end
-    end
-end
-
-local function FantasmaAlvo(alvo, estado)
-    if not alvo then return end
-    print("[DEBUG-FANTASMA] Transformando alvo em fantasma: " .. estado)
-    local m = alvo:FindFirstAncestorWhichIsA("Model") or alvo
-    for _, p in pairs(m:GetDescendants()) do
-        if p:IsA("BasePart") then
-            if estado == "LIGAR" then
-                if not p:FindFirstChild("TargetMod") then
-                    local mod = Instance.new("PathfindingModifier")
-                    mod.Name = "TargetMod"
-                    mod.PassThrough = true
-                    mod.Parent = p
-                end
-            else
-                local mod = p:FindFirstChild("TargetMod")
-                if mod then mod:Destroy() end
-            end
-        end
-    end
+    end)
+    
+    _G.MapaBloxburgConfigurado = true
+    LogSD("Mapa configurado com sucesso!")
 end
 
 -- ==========================================
@@ -115,7 +87,6 @@ end
 
 local function ClicarBotao(btn)
     if not btn then return end
-    print("[DEBUG-CLIQUE] Forçando clique na UI")
     pcall(function()
         if getconnections then
             for _, c in pairs(getconnections(btn.MouseButton1Click)) do c:Fire() end
@@ -124,78 +95,46 @@ local function ClicarBotao(btn)
     end)
 end
 
-function SmartDoor.Cancelar()
-    SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
-    print("[DEBUG-CANCEL] Cancelando rota atual.")
-    pcall(function()
-        local c = Players.LocalPlayer.Character
-        if c and c:FindFirstChild("Humanoid") then
-            c.Humanoid:MoveTo(c.HumanoidRootPart.Position)
-        end
-    end)
-end
-
 -- ==========================================
 -- 🚶 MOVIMENTAÇÃO PRINCIPAL
 -- ==========================================
 function SmartDoor.IrPara(destino, targetPosForcado)
-    print("[DEBUG-GPS] --- INICIANDO FUNÇÃO IRPARA ---")
     SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
     local myId = SmartDoor.CurrentWalkId
 
     local lp = Players.LocalPlayer
     local char = lp.Character
-    if not char or not char:FindFirstChild("Humanoid") then 
-        print("[DEBUG-GPS] Erro: Personagem ou Humanoid não encontrado!")
-        return false 
-    end
+    if not char or not char:FindFirstChild("Humanoid") then return false end
     local hum = char.Humanoid
     local hrp = char.HumanoidRootPart
 
     local targetPos = targetPosForcado or (typeof(destino) == "Instance" and (destino:IsA("Model") and destino:GetPivot().Position or destino.Position) or destino)
-    print("[DEBUG-GPS] Posição de destino definida: " .. tostring(targetPos))
 
-    LogSD("Configurando Fantasmas...")
-    ConfigurarMapa("LIGAR")
-    if typeof(destino) == "Instance" then FantasmaAlvo(destino, "LIGAR") end
+    -- Configura as portas só na primeira vez que rodar
+    ConfigurarMapaUmaVez()
 
     LogSD("Calculando rota pelo GPS...")
-    print("[DEBUG-GPS] Solicitando rota ao Roblox Engine...")
     local path = PathfindingService:CreatePath({
-        AgentRadius = 0.5, 
+        AgentRadius = 0.8, -- Perfeito para não raspar na parede e passar na porta
         AgentHeight = 5,
         AgentCanJump = true,
-        WaypointSpacing = 4,
+        WaypointSpacing = 3,
         Costs = { Calcada = 0.1 } 
     })
 
     local success, err = pcall(function() path:ComputeAsync(hrp.Position, targetPos) end)
-    
-    print("[DEBUG-GPS] ComputeAsync terminou. Success: " .. tostring(success))
-    if not success then
-        print("[DEBUG-GPS] ERRO CRÍTICO NO GPS: " .. tostring(err))
-    end
-    
-    ConfigurarMapa("DESLIGAR")
-    if typeof(destino) == "Instance" then FantasmaAlvo(destino, "DESLIGAR") end
 
-    if not success or path.Status ~= Enum.PathStatus.Success then
-        print("[DEBUG-GPS] Rota falhou. Status do Path: " .. tostring(path.Status))
-        LogSD("❌ GPS Falhou. Bloqueado ou inalcançável.")
+    if not success or (path.Status ~= Enum.PathStatus.Success and path.Status ~= Enum.PathStatus.ClosestNoPath) then
+        LogSD("❌ GPS Falhou ou não achou caminho.")
         return false
     end
 
     local waypoints = path:GetWaypoints()
-    print("[DEBUG-GPS] Rota criada com sucesso! Waypoints totais: " .. #waypoints)
-    LogSD("✅ Rota achada (" .. #waypoints .. " pontos). Andando...")
+    LogSD("✅ Rota achada! Andando...")
 
     for i, wp in ipairs(waypoints) do
-        if SmartDoor.CurrentWalkId ~= myId then 
-            print("[DEBUG-GPS] Rota abortada pois um novo ID foi chamado.")
-            return false 
-        end
+        if SmartDoor.CurrentWalkId ~= myId then return false end
         
-        print("[DEBUG-GPS] Indo para o waypoint " .. i)
         if wp.Action == Enum.PathWaypointAction.Jump then hum.Jump = true end
         hum:MoveTo(wp.Position)
 
@@ -203,18 +142,17 @@ function SmartDoor.IrPara(destino, targetPosForcado)
         local lastPos = hrp.Position
         local tempoChecagemStuck = tick()
 
-        while (hrp.Position - wp.Position).Magnitude > 3.5 do
+        while (hrp.Position - wp.Position).Magnitude > 3.0 do
             if SmartDoor.CurrentWalkId ~= myId then return false end
             
+            -- Lógica da Porta (Lê a sua UI)
             local txt, btn = ObterStatusPorta()
             if txt and (txt:find("open") or txt:find("abrir")) then
-                print("[DEBUG-PORTA] Porta encontrada na UI (Open). Freando...")
                 hum:MoveTo(hrp.Position) 
-                LogSD("🚪 Porta Fechada! Tentando abrir...")
+                LogSD("🚪 Porta Fechada! Abrindo...")
                 
                 if tick() - lastDoorClick > 0.6 then
                     lastDoorClick = tick()
-                    print("[DEBUG-PORTA] Enviando clique pra abrir a porta.")
                     ClicarBotao(btn)
                     task.spawn(function()
                         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
@@ -224,13 +162,12 @@ function SmartDoor.IrPara(destino, targetPosForcado)
                 end
                 task.wait(0.3)
                 hum:MoveTo(wp.Position) 
-                LogSD("Andando...")
             end
 
+            -- Anti-Stuck (Destravar)
             if tick() - tempoChecagemStuck > 0.8 then
                 local distMovida = (hrp.Position - lastPos).Magnitude
                 if distMovida < 0.5 then 
-                    print("[DEBUG-STUCK] Boneco parece travado! Distância movida em 0.8s: " .. distMovida)
                     hum.Jump = true
                     hum:MoveTo(wp.Position)
                 end
@@ -238,25 +175,19 @@ function SmartDoor.IrPara(destino, targetPosForcado)
                 tempoChecagemStuck = tick()
             end
 
-            if tick() - tempoInicio > 5.0 then 
-                print("[DEBUG-GPS] Tempo limite do waypoint excedido (5s). Pulando para o próximo.")
-                break 
-            end
+            if tick() - tempoInicio > 5.0 then break end
             task.wait()
         end
     end
 
     local distFinal = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
-    print("[DEBUG-GPS] Checagem final. Distância pro alvo: " .. distFinal)
-    
     if distFinal < 6 then
         hum:MoveTo(hrp.Position)
         LogSD("✅ Chegou no móvel com sucesso!")
         return true
     end
-    
-    LogSD("⚠️ Parou antes do fim.")
-    return false
+    LogSD("⚠️ Parou perto do alvo.")
+    return true
 end
 
 -- ==========================================
@@ -306,7 +237,7 @@ statusLog.Text = "Aguardando..."
 statusLog.Parent = frame
 _G.StatusTextoTeste = statusLog
 
--- Função 100% Blindada para pegar a Posição
+-- Funções Blindadas de Busca
 local function GetSafePosition(obj)
     if not obj then return nil end
     if obj:IsA("BasePart") then return obj.Position end
@@ -333,30 +264,21 @@ local function GetInteractionPart(obj)
 end
 
 local function EncontrarMovel(tipo)
-    print("[DEBUG-BUSCA] --- INICIANDO BUSCA POR: " .. tostring(tipo) .. " ---")
     local plots = workspace:FindFirstChild("Plots")
-    if not plots then 
-        print("[DEBUG-BUSCA] Pasta 'Plots' não encontrada no workspace!")
-        return nil, nil 
-    end
+    if not plots then return nil, nil end
     
     local char = Players.LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then 
-        print("[DEBUG-BUSCA] Personagem do jogador não encontrado!")
-        return nil, nil 
-    end
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return nil, nil end
     local myPos = char.HumanoidRootPart.Position
     
     local nearestObject = nil
     local nearestPos = nil
     local nearestDist = math.huge
 
-    LogSD("Buscando na pasta Counters...")
-    print("[DEBUG-BUSCA] Iterando sobre os Plots...")
+    LogSD("Buscando sua casa...")
 
     for _, plot in pairs(plots:GetChildren()) do
         if plot:FindFirstChild("House") and plot.House:FindFirstChild("Counters") then
-            print("[DEBUG-BUSCA] Casa e Counters encontrados no Plot: " .. plot.Name)
             for _, obj in pairs(plot.House.Counters:GetChildren()) do
                 local name = string.lower(obj.Name)
                 local isMatch = false
@@ -366,32 +288,21 @@ local function EncontrarMovel(tipo)
                 if tipo == "Cover" and (name:find("counter") or name:find("island")) then isMatch = true end
 
                 if isMatch then
-                    print("[DEBUG-BUSCA] Móvel alvo detectado na pasta: " .. obj.Name)
                     local part = GetInteractionPart(obj)
                     local safePos = GetSafePosition(part)
                     
                     if safePos then
                         local dist = (myPos - safePos).Magnitude
-                        print("[DEBUG-BUSCA] Distância pro móvel: " .. dist)
                         if dist < nearestDist then
                             nearestDist = dist
                             nearestObject = part
                             nearestPos = safePos
                         end
-                    else
-                        print("[DEBUG-BUSCA] ALERTA: Não foi possível extrair a posição física do móvel " .. obj.Name)
                     end
                 end
             end
         end
     end
-    
-    if nearestObject then
-        print("[DEBUG-BUSCA] Busca concluída com sucesso. Alvo finalizado.")
-    else
-        print("[DEBUG-BUSCA] Nenhum móvel atendeu aos critérios.")
-    end
-    
     return nearestObject, nearestPos
 end
 
@@ -412,7 +323,6 @@ local function CriarBotaoTeste(label, busca)
     b.MouseButton1Click:Connect(function()
         if b.Text == "Andando..." then return end 
         
-        print("\n\n[=== TESTE INICIADO: " .. label .. " ===]")
         b.Text = "Procurando..."
         
         task.spawn(function()
@@ -422,21 +332,17 @@ local function CriarBotaoTeste(label, busca)
             
             if not success then
                 b.Text = label
-                print("[DEBUG-MAIN] ERRO NO PCALL DA BUSCA!")
-                LogSD("❌ Erro interno de Lógica (Crash evitado).")
+                LogSD("❌ Erro ao buscar móvel.")
                 return
             end
             
             if alvo and posExata then
                 b.Text = "Andando..."
-                LogSD("Alvo localizado. Indo...")
-                print("[DEBUG-MAIN] Chamando IrPara...")
                 SmartDoor.IrPara(alvo, posExata)
                 b.Text = label 
-                print("[DEBUG-MAIN] Ciclo concluído.")
             else
                 b.Text = label
-                LogSD("❌ Móvel não achado em Counters.")
+                LogSD("❌ Móvel não achado.")
             end
         end)
     end)
