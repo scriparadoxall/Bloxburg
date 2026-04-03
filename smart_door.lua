@@ -134,7 +134,7 @@ local function TentarAbrirPorta()
 end
 
 -- ==========================================
--- 🚶 MOTOR DE CAMINHADA
+-- 🚶 MOTOR DE CAMINHADA (CORRIGIDO)
 -- ==========================================
 function SmartDoor.IrPara(destino, targetPosForcado)
     SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
@@ -145,10 +145,14 @@ function SmartDoor.IrPara(destino, targetPosForcado)
     local hum = char.Humanoid
     local hrp = char.HumanoidRootPart
 
-    local targetPos = targetPosForcado or destino.Position
+    -- Proteção caso 'destino' seja um Model em vez de BasePart
+    local targetPos = targetPosForcado or (destino:IsA("BasePart") and destino.Position or destino.PrimaryPart.Position)
 
     LogSD("1. Preparando o motor de Pathfinding...")
     PrepararFisica("LIGAR", destino)
+
+    -- CORREÇÃO 1: Dar tempo para o Roblox processar o Fantasma na NavMesh
+    task.wait(0.15) 
 
     -- Criador de Rota Simples e Direto (Sem frescuras)
     local path = PathfindingService:CreatePath({
@@ -186,19 +190,27 @@ function SmartDoor.IrPara(destino, targetPosForcado)
         local lastPos = hrp.Position
         local checkStuck = tick()
 
-        while (hrp.Position - wp.Position).Magnitude > 3.5 do
+        while true do
             if SmartDoor.CurrentWalkId ~= myId then return false end
             
-            -- Lida com a porta. Se retornou true, ele achou porta, então a gente freia o boneco.
+            -- CORREÇÃO 2: Ignorar o Eixo Y (Altura) na medição de distância
+            local pPos = Vector3.new(hrp.Position.X, 0, hrp.Position.Z)
+            local wPos = Vector3.new(wp.Position.X, 0, wp.Position.Z)
+            
+            if (pPos - wPos).Magnitude <= 3.5 then
+                break -- Chegou no ponto! Passa pro próximo wp.
+            end
+
+            -- Lida com portas
             if TentarAbrirPorta() then
-                hum:MoveTo(hrp.Position)
+                -- CORREÇÃO 3: Apenas aguarda a animação e reenvia a instrução de andar
                 task.wait(0.5)
                 hum:MoveTo(wp.Position)
             end
 
             -- Anti-Stuck: Se em 1 segundo ele andou menos de meio metro, ele travou
             if tick() - checkStuck > 1.0 then
-                if (hrp.Position - lastPos).Magnitude < 0.5 then 
+                if (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(lastPos.X, 0, lastPos.Z)).Magnitude < 0.5 then 
                     hum.Jump = true
                     hum:MoveTo(wp.Position)
                 end
@@ -216,9 +228,9 @@ function SmartDoor.IrPara(destino, targetPosForcado)
         end
     end
 
-    -- Checagem de sucesso final
+    -- Checagem de sucesso final (Ignorando altura novamente)
     local distFinal = (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(targetPos.X, 0, targetPos.Z)).Magnitude
-    if distFinal < 6 then
+    if distFinal < 6.5 then
         hum:MoveTo(hrp.Position)
         LogSD("🎯 Chegou no alvo com sucesso!")
         return true
@@ -226,6 +238,12 @@ function SmartDoor.IrPara(destino, targetPosForcado)
     
     LogSD("⚠️ Rota terminou, mas ficou longe do alvo.")
     return false
+end
+
+-- Função utilitária para parar o farm/caminhada atual
+function SmartDoor.Cancelar()
+    SmartDoor.CurrentWalkId = SmartDoor.CurrentWalkId + 1
+    LogSD("🚫 Caminhada cancelada.")
 end
 
 -- ==========================================
