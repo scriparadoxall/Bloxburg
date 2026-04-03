@@ -130,7 +130,7 @@ local function MoveToStation(stationType)
     elseif stationType == "counter" then buscaFormatada = "Cover"
     end
 
-    -- CORREÇÃO: Busca ampla varrendo toda a casa para nunca perder o fogão
+    -- CORREÇÃO: Usando a mesma busca do Teste (apenas na pasta Counters) para não achar móveis falsos!
     local function AcharNaCasa(tipo)
         local plots = workspace:FindFirstChild("Plots")
         if not plots then return nil end
@@ -141,32 +141,29 @@ local function MoveToStation(stationType)
         local nearestDist = math.huge
 
         for _, plot in pairs(plots:GetChildren()) do
-            local house = plot:FindFirstChild("House")
-            if house then
-                for _, obj in pairs(house:GetDescendants()) do
-                    if obj:IsA("Model") then
-                        local name = string.lower(obj.Name)
-                        local isMatch = false
-                        
-                        if tipo == "Fridge" and (name:find("fridge") or name:find("refrigerator") or name:find("icebox")) then isMatch = true end
-                        if tipo == "Stove" and (name:find("stove") or name:find("oven") or name:find("cook")) then isMatch = true end
-                        if tipo == "Cover" and (name:find("counter") or name:find("island") or name:find("cabinet")) then isMatch = true end
+            if plot:FindFirstChild("House") and plot.House:FindFirstChild("Counters") then
+                for _, obj in pairs(plot.House.Counters:GetChildren()) do
+                    local name = string.lower(obj.Name)
+                    local isMatch = false
+                    
+                    if tipo == "Fridge" and (name:find("fridge") or name:find("refrigerator") or name:find("icebox")) then isMatch = true end
+                    if tipo == "Stove" and (name:find("stove") or name:find("oven") or name:find("cook")) then isMatch = true end
+                    if tipo == "Cover" and (name:find("counter") or name:find("island") or name:find("cabinet")) then isMatch = true end
 
-                        if isMatch then
-                            local alvoPart = obj
-                            local objModel = obj:FindFirstChild("ObjectModel")
-                            if objModel then
-                                alvoPart = objModel:FindFirstChild("OvenDoor") or objModel:FindFirstChild("MainDoor") or objModel:FindFirstChild("Door") or objModel
-                            end
-                            
-                            local partParaMedir = alvoPart:IsA("Model") and (alvoPart.PrimaryPart or alvoPart:FindFirstChildWhichIsA("BasePart", true)) or alvoPart
-                            
-                            if partParaMedir and partParaMedir:IsA("BasePart") then
-                                local dist = (myPos - partParaMedir.Position).Magnitude
-                                if dist < nearestDist then
-                                    nearestDist = dist
-                                    nearestObj = alvoPart
-                                end
+                    if isMatch then
+                        local alvoPart = obj
+                        local objModel = obj:FindFirstChild("ObjectModel")
+                        if objModel then
+                            alvoPart = objModel:FindFirstChild("OvenDoor") or objModel:FindFirstChild("MainDoor") or objModel:FindFirstChild("Door") or objModel
+                        end
+                        
+                        local partParaMedir = alvoPart:IsA("Model") and (alvoPart.PrimaryPart or alvoPart:FindFirstChildWhichIsA("BasePart", true)) or alvoPart
+                        
+                        if partParaMedir and partParaMedir:IsA("BasePart") then
+                            local dist = (myPos - partParaMedir.Position).Magnitude
+                            if dist < nearestDist then
+                                nearestDist = dist
+                                nearestObj = alvoPart
                             end
                         end
                     end
@@ -187,7 +184,6 @@ local function MoveToStation(stationType)
     if chegou_no_destino then
         local hrp = LocalPlayer.Character.HumanoidRootPart
         
-        -- Vira o boneco de frente para o móvel
         local posOlhar = alvo:IsA("Model") and (alvo.PrimaryPart and alvo.PrimaryPart.Position or alvo:GetPivot().Position) or alvo.Position
         hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(posOlhar.X, hrp.Position.Y, posOlhar.Z))
 
@@ -196,7 +192,6 @@ local function MoveToStation(stationType)
 
         task.wait(0.2)
         
-        -- CORREÇÃO PARA MOBILE: Interage forçando o botão na tela
         local interactUI = PlayerGui:FindFirstChild("_interactUI")
         if interactUI then
             local center = interactUI:FindFirstChild("Center")
@@ -206,7 +201,6 @@ local function MoveToStation(stationType)
             end
         end
         
-        -- Fallback: Aperta a tecla 'E'
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
         task.wait(0.05)
         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
