@@ -2,48 +2,57 @@ _G.Intelligence = {}
 
 local Players = game:GetService("Players")
 local VirtualInputManager = game:GetService("VirtualInputManager")
-local VirtualUser = game:GetService("VirtualUser")
 local isFarmingIntel = false
+local currentMacroId = 0
 
 ---------------------------------------------------------
--- CONFIGURAÇÕES DE OBJETOS
+-- LISTAS DE ALVOS
 ---------------------------------------------------------
-local BookObjects = {
-    "Simplicity Bookcase",
-    "Large Simplicity Bookcase",
-    "Simplicity Dresser",
-    "Simplicity Table",
-    "Ordered Plain Books",
-    "Book"
-}
-
-local SeatObjects = {
-    "Simple Sofa",
-    "MightyFlush Toilet",
-    "Chair",
-    "Sofa",
-    "Bed",
-    "Stool"
-}
+local BookObjects = {"Simplicity Bookcase", "Large Simplicity Bookcase", "Simplicity Dresser", "Simplicity Table", "Ordered Plain Books", "Book"}
+local SeatObjects = {"Simple Sofa", "MightyFlush Toilet", "Chair", "Sofa", "Bed", "Stool", "Bench"}
 
 ---------------------------------------------------------
--- FUNÇÕES AUXILIARES
+-- FUNÇÕES DE DEBUG VISUAL (Apenas o alvo atual)
 ---------------------------------------------------------
+local function LimparMarcacoes()
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj.Name == "IntelDebugHighlight" then 
+            obj:Destroy() 
+        end
+    end
+end
 
--- Encontra a casa (Agora usa exatamente o padrão Plot_SeuNick)
+local function DestacarAlvo(alvo)
+    LimparMarcacoes()
+    if not _G.MostrarObjetosIntel or not alvo then return end
+
+    -- O Highlight precisa ficar num Model ou BasePart para funcionar bem no Bloxburg
+    local modelToHighlight = alvo
+    if not modelToHighlight:IsA("Model") and not modelToHighlight:IsA("BasePart") then
+        modelToHighlight = alvo:FindFirstAncestorWhichIsA("Model") or alvo.Parent
+    end
+
+    if modelToHighlight and (modelToHighlight:IsA("Model") or modelToHighlight:IsA("BasePart")) then
+        local hl = Instance.new("Highlight")
+        hl.Name = "IntelDebugHighlight"
+        hl.FillColor = Color3.fromRGB(0, 255, 100) -- VERDE (Objeto que está sendo usado)
+        hl.FillTransparency = 0.5
+        hl.OutlineColor = Color3.fromRGB(0, 200, 50)
+        hl.Parent = modelToHighlight
+    end
+end
+
+---------------------------------------------------------
+-- FUNÇÕES AUXILIARES E UI
+---------------------------------------------------------
 local function GetPlayerHouse()
     local plots = workspace:FindFirstChild("Plots")
     if not plots then return nil end
 
-    -- Busca direta e garantida (Ex: Plot_drivingnsane)
     local myPlotName = "Plot_" .. Players.LocalPlayer.Name
     local myPlot = plots:FindFirstChild(myPlotName)
-    
-    if myPlot then
-        return myPlot:FindFirstChild("House")
-    end
+    if myPlot then return myPlot:FindFirstChild("House") end
 
-    -- Plano B caso o nick mude ou algo do tipo
     for _, plot in ipairs(plots:GetChildren()) do
         local owner = plot:FindFirstChild("Owner")
         if owner then
@@ -57,16 +66,14 @@ local function GetPlayerHouse()
     return nil
 end
 
--- Pega um objeto aleatório
 local function GetRandomObject(objectList)
     local house = GetPlayerHouse()
-    if not house then return nil, "Casa (Plot_".. Players.LocalPlayer.Name ..") não encontrada no mapa." end
+    if not house then return nil, "Casa não encontrada" end
 
     local objectsFolder = house:FindFirstChild("Objects")
-    if not objectsFolder then return nil, "Pasta 'Objects' não encontrada na sua casa." end
+    if not objectsFolder then return nil, "Pasta 'Objects' vazia" end
 
     local availableObjects = {}
-    
     for _, obj in ipairs(objectsFolder:GetChildren()) do
         for _, objName in ipairs(objectList) do
             if string.find(string.lower(obj.Name), string.lower(objName)) then
@@ -80,26 +87,42 @@ local function GetRandomObject(objectList)
         local randomIndex = math.random(1, #availableObjects)
         local chosenObj = availableObjects[randomIndex]
         
-        -- Se o objeto tiver partes internas interativas (como o .Books que você mandou), pega elas como alvo para mirar melhor
         local targetPart = chosenObj
         if chosenObj:FindFirstChild("ObjectModel") then
-            if chosenObj.ObjectModel:FindFirstChild("Books") then
-                targetPart = chosenObj.ObjectModel.Books
-            elseif chosenObj.ObjectModel:FindFirstChild("Door1") then
-                targetPart = chosenObj.ObjectModel.Door1
-            end
+            if chosenObj.ObjectModel:FindFirstChild("Books") then targetPart = chosenObj.ObjectModel.Books
+            elseif chosenObj.ObjectModel:FindFirstChild("Door1") then targetPart = chosenObj.ObjectModel.Door1 end
         elseif chosenObj:FindFirstChild("ItemHolder") then
             targetPart = chosenObj.ItemHolder
         end
         
         return targetPart, "Sucesso", chosenObj.Name
     end
-
-    return nil, "Nenhum móvel compatível com a lista foi achado."
+    return nil, "Móvel não achado"
 end
 
--- Verifica a UI e aperta "E"
-local function InteractWithUI(validWords)
+local function SafeClick(element)
+    if not element then return false end
+    local success = false
+    pcall(function()
+        if getconnections then
+            if element.MouseButton1Click then 
+                for _, conn in pairs(getconnections(element.MouseButton1Click)) do conn:Fire(); success = true end 
+            end
+            if not success and element.Activated then 
+                for _, conn in pairs(getconnections(element.Activated)) do conn:Fire(); success = true end 
+            end
+            if not success and element.MouseButton1Down then
+                 for _, conn in pairs(getconnections(element.MouseButton1Down)) do conn:Fire() end 
+                 for _, conn in pairs(getconnections(element.MouseButton1Up)) do conn:Fire() end 
+                 success = true
+            end
+        end
+    end)
+    return success
+end
+
+-- Aperta "E" na tela de interação
+local function InteractOnce(validWords)
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
     local interactUI = playerGui:FindFirstChild("_interactUI")
 
@@ -109,11 +132,10 @@ local function InteractWithUI(validWords)
             local textLabel = indicator:FindFirstChild("TextLabel")
             if textLabel then
                 local currentText = string.lower(textLabel.Text)
-
                 for _, word in ipairs(validWords) do
                     if string.find(currentText, string.lower(word)) then
                         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                        task.wait(0.1)
+                        task.wait(0.05)
                         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
                         return true
                     end
@@ -124,80 +146,143 @@ local function InteractWithUI(validWords)
     return false
 end
 
----------------------------------------------------------
--- LOOP PRINCIPAL DO FARM
----------------------------------------------------------
+-- Verifica se tem algo na mão
+local function CheckHandAction()
+    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+    local hudGui = playerGui:FindFirstChild("HUDGui")
+    if hudGui then
+        local hotbar = hudGui:FindFirstChild("Hotbar")
+        if hotbar then
+            local layout = hotbar:FindFirstChild("LayoutContainer")
+            if layout then
+                local leftBtn = layout:FindFirstChild("LeftButtonContainer")
+                if leftBtn then
+                    local equippedContainer = leftBtn:FindFirstChild("EquippedContainer")
+                    if equippedContainer and equippedContainer.Visible then
+                        local actionLabel = equippedContainer:FindFirstChild("ActionLabel")
+                        if actionLabel and actionLabel.Text ~= "" then
+                            return string.lower(actionLabel.Text), equippedContainer
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return nil, nil
+end
 
+---------------------------------------------------------
+-- LOOP PRINCIPAL
+---------------------------------------------------------
 function _G.Intelligence.Start()
     if isFarmingIntel then return end
     isFarmingIntel = true
+    currentMacroId = currentMacroId + 1
+    local myId = currentMacroId
 
     if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Farm de Inteligência Iniciado!", Color3.fromRGB(150, 150, 255)) end
 
     task.spawn(function()
-        while isFarmingIntel do
-            -------------------------------------------------
-            -- PASSO 1: Achar e pegar um Livro Aleatório
-            -------------------------------------------------
-            local randomBookTarget, erroMotivo, bookName = GetRandomObject(BookObjects)
+        while isFarmingIntel and currentMacroId == myId do
+            local char = Players.LocalPlayer.Character
+            if not char or not char:FindFirstChild("Humanoid") then task.wait(2) continue end
+            local hum = char.Humanoid
 
-            if randomBookTarget then
-                if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Indo até: " .. tostring(bookName), Color3.fromRGB(200, 200, 200)) end
+            -- PASSO 1: VERIFICA O QUE TEM NA MÃO
+            local handAction, handButton = CheckHandAction()
+            local temLivroNaMao = false
 
-                if _G.SmartDoor and _G.SmartDoor.IrPara then
-                    _G.SmartDoor.IrPara(randomBookTarget)
+            if handAction and (string.find(handAction, "use") or string.find(handAction, "read") or string.find(handAction, "usar") or string.find(handAction, "ler")) then
+                temLivroNaMao = true
+            end
+
+            -- PASSO 2: PEGAR O LIVRO
+            if not temLivroNaMao and not hum.Sit then
+                local randomBook, erroBook, bookName = GetRandomObject(BookObjects)
+                
+                if randomBook then
+                    DestacarAlvo(randomBook) -- Marca o livro de VERDE
+                    
+                    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Buscando livro: " .. tostring(bookName), Color3.fromRGB(200, 200, 200)) end
+                    if _G.SmartDoor and _G.SmartDoor.IrPara then _G.SmartDoor.IrPara(randomBook) end
+                    
+                    task.wait(1)
+                    
+                    if InteractOnce({"take", "read", "book", "ler", "pegar"}) then
+                        local attempts = 0
+                        while attempts < 10 do
+                            if not isFarmingIntel or currentMacroId ~= myId then break end
+                            local act = CheckHandAction()
+                            if act and (string.find(act, "use") or string.find(act, "read")) then
+                                break
+                            end
+                            task.wait(0.5)
+                            attempts = attempts + 1
+                        end
+                    else
+                        task.wait(2)
+                    end
+                else
+                    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Sem estantes. Pausando.", Color3.fromRGB(255, 100, 100)) end
+                    task.wait(5)
                 end
 
-                task.wait(1.5)
-
-                local hasTakenBook = InteractWithUI({"take", "read", "book", "ler", "pegar"})
-
-                if hasTakenBook then
-                    task.wait(1.5)
-
-                    -------------------------------------------------
-                    -- PASSO 2: Achar Assento e Sentar
-                    -------------------------------------------------
-                    local randomSeatTarget, seatMotivo, seatName = GetRandomObject(SeatObjects)
-
-                    if randomSeatTarget then
-                        if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Buscando assento: " .. tostring(seatName), Color3.fromRGB(200, 200, 200)) end
-
-                        if _G.SmartDoor and _G.SmartDoor.IrPara then
-                            _G.SmartDoor.IrPara(randomSeatTarget)
-                        end
-
-                        task.wait(1.5)
-
-                        local hasSat = InteractWithUI({"sit", "use", "sentar", "usar"})
-
-                        if hasSat then
-                            if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Lendo...", Color3.fromRGB(100, 255, 100)) end
-                            task.wait(15) 
-                        else
-                            if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Chegou no assento mas a UI não apareceu.", Color3.fromRGB(255, 150, 100)) end
+            -- PASSO 3: ESTÁ COM O LIVRO NA MÃO
+            elseif temLivroNaMao then
+                if not hum.Sit then
+                    local randomSeat, erroSeat, seatName = GetRandomObject(SeatObjects)
+                    
+                    if randomSeat then
+                        DestacarAlvo(randomSeat) -- Marca o assento de VERDE
+                        
+                        if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Indo sentar em: " .. tostring(seatName), Color3.fromRGB(200, 200, 200)) end
+                        if _G.SmartDoor and _G.SmartDoor.IrPara then _G.SmartDoor.IrPara(randomSeat) end
+                        
+                        task.wait(1)
+                        if InteractOnce({"sit", "use", "sentar", "usar"}) then
                             task.wait(2)
                         end
                     else
-                        if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Assento não achado: " .. seatMotivo, Color3.fromRGB(255, 150, 100)) end
-                        task.wait(3)
+                        if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Lendo de pé!", Color3.fromRGB(255, 200, 100)) end
+                        if handButton then SafeClick(handButton) end
+                        task.wait(15)
                     end
+                
+                -- PASSO 4: LENDO
                 else
-                    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Chegou na estante, mas não deu para pegar o livro.", Color3.fromRGB(255, 150, 100)) end
-                    task.wait(3)
+                    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Lendo tranquilo...", Color3.fromRGB(100, 255, 100)) end
+                    
+                    for i=1, 15 do
+                        if not isFarmingIntel or currentMacroId ~= myId or hum.Sit == false then break end
+                        task.wait(1)
+                    end
+                    
+                    hum.Jump = true 
+                    task.wait(1)
+                    LimparMarcacoes() -- Limpa o verde depois que terminar de ler
                 end
-            else
-                if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Erro: " .. erroMotivo, Color3.fromRGB(255, 100, 100)) end
-                task.wait(5)
             end
-
-            task.wait(1)
+            
+            task.wait(0.5)
         end
     end)
 end
 
 function _G.Intelligence.Stop()
     isFarmingIntel = false
+    currentMacroId = currentMacroId + 1
+    LimparMarcacoes()
+    
+    local doorSystem = nil
+    pcall(function()
+        local url = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/smart_door.lua"
+        doorSystem = loadstring(game:HttpGet(url))()
+    end)
+
+    if doorSystem and type(doorSystem.Cancelar) == "function" then
+        doorSystem.Cancelar()
+    end
+
     if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Farm de Inteligência parado.", Color3.fromRGB(255, 100, 100)) end
 end
 
