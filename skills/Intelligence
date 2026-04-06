@@ -8,7 +8,6 @@ local isFarmingIntel = false
 ---------------------------------------------------------
 -- CONFIGURAÇÕES DE OBJETOS (Nomes Exatos)
 ---------------------------------------------------------
--- Coloque aqui apenas o nome do objeto principal. O script vai buscar as partes interagíveis dentro dele.
 local BookObjects = {
     "Simplicity Bookcase",
     "Large Simplicity Bookcase",
@@ -77,7 +76,7 @@ local function ClickOnPart(part)
     end
 end
 
--- Verifica a UI e aperta "E" se achar as palavras-chave (ex: "Sit", "Use", "Take", "Read")
+-- Verifica a UI e aperta "E" se achar as palavras-chave
 local function InteractWithUI(validWords)
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
     local interactUI = playerGui:FindFirstChild("_interactUI")
@@ -89,7 +88,6 @@ local function InteractWithUI(validWords)
             if textLabel then
                 local currentText = string.lower(textLabel.Text)
 
-                -- Checa se o texto da tela bate com alguma das palavras que queremos
                 for _, word in ipairs(validWords) do
                     if string.find(currentText, string.lower(word)) then
                         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
@@ -124,18 +122,14 @@ function _G.Intelligence.Start()
             if randomBookTarget then
                 if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Indo até: " .. randomBookTarget.Name, Color3.fromRGB(200, 200, 200)) end
 
-                -- Usa sua função de andar do SmartDoor
+                -- Mandando o objeto final direto pro seu SmartDoor!
                 if _G.SmartDoor and _G.SmartDoor.IrPara then
-                    _G.SmartDoor.IrPara(randomBookTarget.PrimaryPart and randomBookTarget.PrimaryPart or randomBookTarget)
+                    _G.SmartDoor.IrPara(randomBookTarget)
                 end
 
-                task.wait(1) -- Espera estabilizar
+                task.wait(1)
 
-                -- Interagir com o livro (Muitas vezes em Bloxburg precisamos clicar primeiro e depois apertar E na UI)
-                -- ClickOnPart(randomBookTarget.PrimaryPart or randomBookTarget)
-                -- task.wait(0.5)
-
-                -- Tenta apertar E se aparecer "Take", "Read" ou "Take Book"
+                -- Tenta apertar E se aparecer "Take", "Read" ou "Book"
                 local hasTakenBook = InteractWithUI({"Take", "Read", "Book"})
 
                 if hasTakenBook then
@@ -149,9 +143,9 @@ function _G.Intelligence.Start()
                     if randomSeatTarget then
                         if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Buscando assento: " .. randomSeatTarget.Name, Color3.fromRGB(200, 200, 200)) end
 
-                        -- Anda até o assento
+                        -- Mandando o objeto final direto pro seu SmartDoor!
                         if _G.SmartDoor and _G.SmartDoor.IrPara then
-                            _G.SmartDoor.IrPara(randomSeatTarget.PrimaryPart and randomSeatTarget.PrimaryPart or randomSeatTarget)
+                            _G.SmartDoor.IrPara(randomSeatTarget)
                         end
 
                         task.wait(1)
@@ -161,7 +155,6 @@ function _G.Intelligence.Start()
 
                         if hasSat then
                             if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Lendo...", Color3.fromRGB(100, 255, 100)) end
-                            -- Fica lendo por um tempo antes de recomeçar o ciclo
                             task.wait(15) 
                         end
                     end
