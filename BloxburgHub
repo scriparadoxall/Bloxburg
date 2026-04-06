@@ -127,7 +127,7 @@ local function LoadMainHub()
         -- Criar Botões Laterais
         local TabBtn = Instance.new("TextButton", Sidebar)
         TabBtn.Size = UDim2.new(1, 0, 0, 35)
-        TabBtn.BackgroundColor3 = i == 4 and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(20, 20, 20) -- Seleciona Automation por padrão
+        TabBtn.BackgroundColor3 = i == 1 and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(20, 20, 20) -- Seleciona Skills por padrão
         TabBtn.BorderSizePixel = 0
         TabBtn.Font = Enum.Font.GothamSemibold
         TabBtn.Text = tabName
@@ -139,7 +139,7 @@ local function LoadMainHub()
         local Page = Instance.new("Frame", PagesContainer)
         Page.Size = UDim2.new(1, 0, 1, 0)
         Page.BackgroundTransparency = 1
-        Page.Visible = (i == 4) -- Mostra a aba Automation por padrão
+        Page.Visible = (i == 1) -- Mostra a aba Skills por padrão
         pageFrames[tabName] = Page
 
         -- Lógica de troca de abas
@@ -152,65 +152,74 @@ local function LoadMainHub()
     end
 
     --------------------------
-    -- CONTEÚDO: SKILLS
+    -- CONTEÚDO: SKILLS (Atualizado)
     --------------------------
-    local SkillsTitle = Instance.new("TextLabel", pageFrames["Skills"])
-    SkillsTitle.BackgroundTransparency = 1; SkillsTitle.Size = UDim2.new(1, 0, 1, 0)
-    SkillsTitle.Font = Enum.Font.GothamBold; SkillsTitle.Text = "Skills content coming soon..."; SkillsTitle.TextColor3 = Color3.fromRGB(100, 100, 100); SkillsTitle.TextSize = 16
+    local SkillsPage = pageFrames["Skills"]
 
-    --------------------------
-    -- CONTEÚDO: WORKS
-    --------------------------
-    local WorksTitle = Instance.new("TextLabel", pageFrames["Works"])
-    WorksTitle.BackgroundTransparency = 1; WorksTitle.Size = UDim2.new(1, 0, 1, 0)
-    WorksTitle.Font = Enum.Font.GothamBold; WorksTitle.Text = "Coming Soon"; WorksTitle.TextColor3 = Color3.fromRGB(255, 200, 50); WorksTitle.TextSize = 22
+    local SkillsScroll = Instance.new("ScrollingFrame", SkillsPage)
+    SkillsScroll.Size = UDim2.new(1, 0, 1, 0)
+    SkillsScroll.BackgroundTransparency = 1
+    SkillsScroll.ScrollBarThickness = 4
+    SkillsScroll.BorderSizePixel = 0
+    
+    local SkillsLayout = Instance.new("UIListLayout", SkillsScroll)
+    SkillsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    SkillsLayout.Padding = UDim.new(0, 6)
 
-    --------------------------
-    -- CONTEÚDO: UTILS
-    --------------------------
-    local DonateBtn = Instance.new("TextButton", pageFrames["Utils"])
-    DonateBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 100); DonateBtn.Position = UDim2.new(0, 10, 0, 10); DonateBtn.Size = UDim2.new(0, 160, 0, 40)
-    DonateBtn.Font = Enum.Font.GothamBold; DonateBtn.Text = "💸 Donate Money"; DonateBtn.TextColor3 = Color3.fromRGB(255, 255, 255); DonateBtn.TextSize = 14
-    Instance.new("UICorner", DonateBtn).CornerRadius = UDim.new(0, 6)
+    -- SESSÃO COOKING (Com automação)
+    local CookingFrame = Instance.new("Frame", SkillsScroll)
+    CookingFrame.Size = UDim2.new(1, -10, 0, 75)
+    CookingFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    Instance.new("UICorner", CookingFrame).CornerRadius = UDim.new(0, 6)
 
-    --------------------------
-    -- CONTEÚDO: AUTOMATIONS (Farm + Logs)
-    --------------------------
-    local AutoPage = pageFrames["Automations"]
+    local CookingTitle = Instance.new("TextLabel", CookingFrame)
+    CookingTitle.BackgroundTransparency = 1; CookingTitle.Position = UDim2.new(0, 10, 0, 5); CookingTitle.Size = UDim2.new(1, -20, 0, 20)
+    CookingTitle.Font = Enum.Font.GothamBold; CookingTitle.Text = "👨‍🍳 Cooking (Auto-Farm)"; CookingTitle.TextColor3 = Color3.fromRGB(255, 200, 100); CookingTitle.TextSize = 14; CookingTitle.TextXAlignment = Enum.TextXAlignment.Left
 
     local selectedFoodUI = "Hot Dogs"
-    local FoodBtn = Instance.new("TextButton", AutoPage)
-    FoodBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); FoodBtn.Position = UDim2.new(0, 5, 0, 5); FoodBtn.Size = UDim2.new(0, 160, 0, 35)
+    local FoodBtn = Instance.new("TextButton", CookingFrame)
+    FoodBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); FoodBtn.Position = UDim2.new(0, 10, 0, 35); FoodBtn.Size = UDim2.new(0, 150, 0, 30)
     FoodBtn.Font = Enum.Font.GothamSemibold; FoodBtn.Text = "🍕 " .. selectedFoodUI; FoodBtn.TextColor3 = Color3.fromRGB(255, 255, 255); FoodBtn.TextSize = 12
     Instance.new("UICorner", FoodBtn).CornerRadius = UDim.new(0, 6)
 
-    local FarmBtn = Instance.new("TextButton", AutoPage)
-    FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40); FarmBtn.Position = UDim2.new(0, 5, 0, 50); FarmBtn.Size = UDim2.new(0, 160, 0, 40)
-    FarmBtn.Font = Enum.Font.GothamBold; FarmBtn.Text = "▶ Iniciar Farm"; FarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255); FarmBtn.TextSize = 14
+    local FarmBtn = Instance.new("TextButton", CookingFrame)
+    FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40); FarmBtn.Position = UDim2.new(0, 170, 0, 35); FarmBtn.Size = UDim2.new(0, 120, 0, 30)
+    FarmBtn.Font = Enum.Font.GothamBold; FarmBtn.Text = "▶ Iniciar Farm"; FarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255); FarmBtn.TextSize = 12
     Instance.new("UICorner", FarmBtn).CornerRadius = UDim.new(0, 6)
 
-    local PremiumLabel = Instance.new("TextLabel", AutoPage)
-    PremiumLabel.BackgroundTransparency = 1; PremiumLabel.Position = UDim2.new(0, 5, 0, 100); PremiumLabel.Size = UDim2.new(0, 160, 0, 30)
-    PremiumLabel.Font = Enum.Font.GothamBold; PremiumLabel.Text = "⭐ Premium (Coming soon)"; PremiumLabel.TextColor3 = Color3.fromRGB(255, 170, 0); PremiumLabel.TextSize = 12
+    -- LISTA DAS OUTRAS SKILLS
+    local skillList = {
+        {"🎵 Music", Color3.fromRGB(150, 200, 255)},
+        {"🏃 Athletic", Color3.fromRGB(255, 100, 100)},
+        {"🎨 Art", Color3.fromRGB(255, 150, 200)},
+        {"🪴 Gardening", Color3.fromRGB(100, 255, 100)},
+        {"✍️ Writing", Color3.fromRGB(200, 200, 200)},
+        {"🧠 Intelligence", Color3.fromRGB(150, 150, 255)},
+        {"🎮 Gaming", Color3.fromRGB(150, 255, 150)}
+    }
 
-    local LogPanel = Instance.new("ScrollingFrame", AutoPage)
-    LogPanel.BackgroundColor3 = Color3.fromRGB(12, 12, 12); LogPanel.Position = UDim2.new(0, 180, 0, 5); LogPanel.Size = UDim2.new(1, -185, 1, -10); LogPanel.ScrollBarThickness = 4; LogPanel.BorderSizePixel = 0
-    Instance.new("UICorner", LogPanel).CornerRadius = UDim.new(0, 6)
-    local LogLayout = Instance.new("UIListLayout", LogPanel); LogLayout.SortOrder = Enum.SortOrder.LayoutOrder; LogLayout.Padding = UDim.new(0, 2)
+    for _, skillData in ipairs(skillList) do
+        local SFrame = Instance.new("Frame", SkillsScroll)
+        SFrame.Size = UDim2.new(1, -10, 0, 40)
+        SFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        Instance.new("UICorner", SFrame).CornerRadius = UDim.new(0, 6)
 
-    local logCount = 0
-    _G.BloxburgChef_AddLog = function(texto, cor)
-        logCount = logCount + 1
-        local newLog = Instance.new("TextLabel", LogPanel)
-        newLog.BackgroundTransparency = 1; newLog.Size = UDim2.new(1, -10, 0, 16); newLog.Font = Enum.Font.Code; newLog.Text = "[" .. os.date("%H:%M") .. "] " .. texto; newLog.TextColor3 = cor or Color3.fromRGB(200, 200, 200); newLog.TextSize = 11; newLog.TextXAlignment = Enum.TextXAlignment.Left; newLog.LayoutOrder = logCount
-        LogPanel.CanvasSize = UDim2.new(0, 0, 0, LogLayout.AbsoluteContentSize.Y)
-        LogPanel.CanvasPosition = Vector2.new(0, LogLayout.AbsoluteContentSize.Y)
+        local STitle = Instance.new("TextLabel", SFrame)
+        STitle.BackgroundTransparency = 1; STitle.Position = UDim2.new(0, 10, 0, 0); STitle.Size = UDim2.new(0.5, 0, 1, 0)
+        STitle.Font = Enum.Font.GothamBold; STitle.Text = skillData[1]; STitle.TextColor3 = skillData[2]; STitle.TextSize = 13; STitle.TextXAlignment = Enum.TextXAlignment.Left
+
+        local SStatus = Instance.new("TextLabel", SFrame)
+        SStatus.BackgroundTransparency = 1; SStatus.Position = UDim2.new(0.5, -10, 0, 0); SStatus.Size = UDim2.new(0.5, 0, 1, 0)
+        SStatus.Font = Enum.Font.Gotham; SStatus.Text = "Em breve / Coming soon"; SStatus.TextColor3 = Color3.fromRGB(100, 100, 100); SStatus.TextSize = 11; SStatus.TextXAlignment = Enum.TextXAlignment.Right
     end
-    _G.BloxburgChef_AddLog("Módulos carregados com sucesso!", Color3.fromRGB(50, 255, 255))
 
-    -- Painel de comidas (escondido por padrão, ZIndex alto)
-    local FoodListPanel = Instance.new("ScrollingFrame", AutoPage)
-    FoodListPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 25); FoodListPanel.Position = UDim2.new(0, 5, 0, 45); FoodListPanel.Size = UDim2.new(0, 160, 0, 145); FoodListPanel.ScrollBarThickness = 4; FoodListPanel.ZIndex = 10; FoodListPanel.Visible = false
+    SkillsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() 
+        SkillsScroll.CanvasSize = UDim2.new(0, 0, 0, SkillsLayout.AbsoluteContentSize.Y + 10) 
+    end)
+
+    -- PAINEL DE COMIDAS (Flutuante sobre a aba Skills)
+    local FoodListPanel = Instance.new("ScrollingFrame", SkillsPage)
+    FoodListPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 25); FoodListPanel.Position = UDim2.new(0, 10, 0, 70); FoodListPanel.Size = UDim2.new(0, 150, 0, 145); FoodListPanel.ScrollBarThickness = 4; FoodListPanel.ZIndex = 10; FoodListPanel.Visible = false
     Instance.new("UICorner", FoodListPanel).CornerRadius = UDim.new(0, 6)
     local FoodLayout = Instance.new("UIListLayout", FoodListPanel); FoodLayout.Padding = UDim.new(0, 2)
 
@@ -238,6 +247,41 @@ local function LoadMainHub()
             _G.BloxburgChef.Start(selectedFoodUI)
         end
     end)
+
+    --------------------------
+    -- CONTEÚDO: WORKS
+    --------------------------
+    local WorksTitle = Instance.new("TextLabel", pageFrames["Works"])
+    WorksTitle.BackgroundTransparency = 1; WorksTitle.Size = UDim2.new(1, 0, 1, 0)
+    WorksTitle.Font = Enum.Font.GothamBold; WorksTitle.Text = "Coming Soon"; WorksTitle.TextColor3 = Color3.fromRGB(255, 200, 50); WorksTitle.TextSize = 22
+
+    --------------------------
+    -- CONTEÚDO: UTILS
+    --------------------------
+    local DonateBtn = Instance.new("TextButton", pageFrames["Utils"])
+    DonateBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 100); DonateBtn.Position = UDim2.new(0, 10, 0, 10); DonateBtn.Size = UDim2.new(0, 160, 0, 40)
+    DonateBtn.Font = Enum.Font.GothamBold; DonateBtn.Text = "💸 Donate Money"; DonateBtn.TextColor3 = Color3.fromRGB(255, 255, 255); DonateBtn.TextSize = 14
+    Instance.new("UICorner", DonateBtn).CornerRadius = UDim.new(0, 6)
+
+    --------------------------
+    -- CONTEÚDO: AUTOMATIONS (Agora dedicado aos Logs)
+    --------------------------
+    local AutoPage = pageFrames["Automations"]
+
+    local LogPanel = Instance.new("ScrollingFrame", AutoPage)
+    LogPanel.BackgroundColor3 = Color3.fromRGB(12, 12, 12); LogPanel.Position = UDim2.new(0, 5, 0, 5); LogPanel.Size = UDim2.new(1, -15, 1, -10); LogPanel.ScrollBarThickness = 4; LogPanel.BorderSizePixel = 0
+    Instance.new("UICorner", LogPanel).CornerRadius = UDim.new(0, 6)
+    local LogLayout = Instance.new("UIListLayout", LogPanel); LogLayout.SortOrder = Enum.SortOrder.LayoutOrder; LogLayout.Padding = UDim.new(0, 2)
+
+    local logCount = 0
+    _G.BloxburgChef_AddLog = function(texto, cor)
+        logCount = logCount + 1
+        local newLog = Instance.new("TextLabel", LogPanel)
+        newLog.BackgroundTransparency = 1; newLog.Size = UDim2.new(1, -10, 0, 16); newLog.Font = Enum.Font.Code; newLog.Text = "[" .. os.date("%H:%M") .. "] " .. texto; newLog.TextColor3 = cor or Color3.fromRGB(200, 200, 200); newLog.TextSize = 11; newLog.TextXAlignment = Enum.TextXAlignment.Left; newLog.LayoutOrder = logCount
+        LogPanel.CanvasSize = UDim2.new(0, 0, 0, LogLayout.AbsoluteContentSize.Y)
+        LogPanel.CanvasPosition = Vector2.new(0, LogLayout.AbsoluteContentSize.Y)
+    end
+    _G.BloxburgChef_AddLog("Módulos carregados com sucesso!", Color3.fromRGB(50, 255, 255))
 
     --------------------------
     -- CONTEÚDO: CONFIG (Úteis)
@@ -271,7 +315,7 @@ local function LoadMainHub()
         end
     end)
 
-    -- BOTÃO DE ROTA VISUAL (NOVO!)
+    -- BOTÃO DE ROTA VISUAL
     local RouteBtn = Instance.new("TextButton", ConfigPage)
     RouteBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); RouteBtn.Position = UDim2.new(0, 10, 0, 60); RouteBtn.Size = UDim2.new(0, 200, 0, 40)
     RouteBtn.Font = Enum.Font.GothamSemibold; RouteBtn.TextSize = 14
@@ -296,7 +340,6 @@ local function LoadMainHub()
             RouteBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
             if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Rota visual desativada.", Color3.fromRGB(255, 100, 100)) end
             
-            -- Limpa os orbs imediatamente da tela quando desativa
             local folder = workspace:FindFirstChild("CaminhoSmartDoor")
             if folder then folder:Destroy() end
         end
