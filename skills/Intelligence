@@ -6,74 +6,75 @@ local VirtualUser = game:GetService("VirtualUser")
 local isFarmingIntel = false
 
 ---------------------------------------------------------
--- CONFIGURAÇÕES DE OBJETOS (Nomes Exatos)
+-- CONFIGURAÇÕES DE OBJETOS
 ---------------------------------------------------------
+-- Agora ele procura se o nome CONTÉM essas palavras, não precisa ser exato!
 local BookObjects = {
     "Simplicity Bookcase",
     "Large Simplicity Bookcase",
     "Simplicity Dresser",
     "Simplicity Table",
-    "Ordered Plain Books"
+    "Ordered Plain Books",
+    "Book" -- Adicionei 'Book' genérico para achar qualquer livro!
 }
 
 local SeatObjects = {
     "Simple Sofa",
-    "MightyFlush Toilet"
+    "MightyFlush Toilet",
+    "Chair", -- Genéricos para ajudar a achar assentos
+    "Sofa",
+    "Bed"
 }
 
 ---------------------------------------------------------
--- FUNÇÕES AUXILIARES
+-- FUNÇÕES AUXILIARES MELHORADAS
 ---------------------------------------------------------
 
--- Encontra a casa do jogador local automaticamente
+-- Encontra a casa do jogador local automaticamente (Corrigido para Bloxburg)
 local function GetPlayerHouse()
     local plots = workspace:FindFirstChild("Plots")
     if not plots then return nil end
 
     for _, plot in ipairs(plots:GetChildren()) do
         local owner = plot:FindFirstChild("Owner")
-        if owner and owner.Value == Players.LocalPlayer then
-            return plot:FindFirstChild("House")
+        if owner then
+            -- Bloxburg às vezes usa Instance, às vezes StringValue para o Owner
+            if typeof(owner.Value) == "Instance" and owner.Value == Players.LocalPlayer then
+                return plot:FindFirstChild("House")
+            elseif type(owner.Value) == "string" and owner.Value == Players.LocalPlayer.Name then
+                return plot:FindFirstChild("House")
+            end
         end
     end
     return nil
 end
 
--- Pega um objeto aleatório da casa baseado nas nossas listas
+-- Pega um objeto aleatório da casa baseado nas nossas listas (Busca inteligente)
 local function GetRandomObject(objectList)
     local house = GetPlayerHouse()
-    if not house then return nil end
+    if not house then return nil, "Casa (Plot) não encontrada" end
 
     local objectsFolder = house:FindFirstChild("Objects")
-    if not objectsFolder then return nil end
+    if not objectsFolder then return nil, "Pasta de objetos não carregou" end
 
-    -- Embaralha e tenta achar algum objeto válido da lista
     local availableObjects = {}
-    for _, objName in ipairs(objectList) do
-        local obj = objectsFolder:FindFirstChild(objName)
-        if obj then
-            table.insert(availableObjects, obj)
+    
+    for _, obj in ipairs(objectsFolder:GetChildren()) do
+        for _, objName in ipairs(objectList) do
+            -- Procura ignorando maiúsculas/minúsculas e espaços extras
+            if string.find(string.lower(obj.Name), string.lower(objName)) then
+                table.insert(availableObjects, obj)
+                break -- Já achou, vai pro próximo objeto do mapa
+            end
         end
     end
 
     if #availableObjects > 0 then
         local randomIndex = math.random(1, #availableObjects)
-        return availableObjects[randomIndex]
+        return availableObjects[randomIndex], "Sucesso"
     end
 
-    return nil
-end
-
--- Simula o clique do mouse em uma parte 3D
-local function ClickOnPart(part)
-    local camera = workspace.CurrentCamera
-    local screenPoint, onScreen = camera:WorldToScreenPoint(part.Position)
-
-    if onScreen then
-        VirtualUser:Button1Down(Vector2.new(screenPoint.X, screenPoint.Y), camera.CFrame)
-        task.wait(0.1)
-        VirtualUser:Button1Up(Vector2.new(screenPoint.X, screenPoint.Y), camera.CFrame)
-    end
+    return nil, "Nenhum móvel da lista foi encontrado na casa"
 end
 
 -- Verifica a UI e aperta "E" se achar as palavras-chave
@@ -83,7 +84,7 @@ local function InteractWithUI(validWords)
 
     if interactUI then
         local indicator = interactUI:FindFirstChild("InteractIndicator")
-        if indicator then
+        if indicator and indicator.Visible then
             local textLabel = indicator:FindFirstChild("TextLabel")
             if textLabel then
                 local currentText = string.lower(textLabel.Text)
@@ -117,12 +118,12 @@ function _G.Intelligence.Start()
             -------------------------------------------------
             -- PASSO 1: Achar e pegar um Livro Aleatório
             -------------------------------------------------
-            local randomBookTarget = GetRandomObject(BookObjects)
+            local randomBookTarget, erroMotivo = GetRandomObject(BookObjects)
 
             if randomBookTarget then
                 if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Indo até: " .. randomBookTarget.Name, Color3.fromRGB(200, 200, 200)) end
 
-                -- Mandando o objeto final direto pro seu SmartDoor!
+                -- Usa sua função de andar do SmartDoor
                 if _G.SmartDoor and _G.SmartDoor.IrPara then
                     _G.SmartDoor.IrPara(randomBookTarget)
                 end
@@ -130,20 +131,20 @@ function _G.Intelligence.Start()
                 task.wait(1)
 
                 -- Tenta apertar E se aparecer "Take", "Read" ou "Book"
-                local hasTakenBook = InteractWithUI({"Take", "Read", "Book"})
+                local hasTakenBook = InteractWithUI({"take", "read", "book", "ler", "pegar"})
 
                 if hasTakenBook then
-                    task.wait(1)
+                    task.wait(1.5)
 
                     -------------------------------------------------
                     -- PASSO 2: Achar Assento e Sentar
                     -------------------------------------------------
-                    local randomSeatTarget = GetRandomObject(SeatObjects)
+                    local randomSeatTarget, seatMotivo = GetRandomObject(SeatObjects)
 
                     if randomSeatTarget then
                         if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Buscando assento: " .. randomSeatTarget.Name, Color3.fromRGB(200, 200, 200)) end
 
-                        -- Mandando o objeto final direto pro seu SmartDoor!
+                        -- Anda até o assento
                         if _G.SmartDoor and _G.SmartDoor.IrPara then
                             _G.SmartDoor.IrPara(randomSeatTarget)
                         end
@@ -151,16 +152,23 @@ function _G.Intelligence.Start()
                         task.wait(1)
 
                         -- Checa se aparece "Sit" ou "Use" e aperta E
-                        local hasSat = InteractWithUI({"Sit", "Use"})
+                        local hasSat = InteractWithUI({"sit", "use", "sentar", "usar"})
 
                         if hasSat then
                             if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Lendo...", Color3.fromRGB(100, 255, 100)) end
                             task.wait(15) 
                         end
+                    else
+                        if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Assento não achado: " .. seatMotivo, Color3.fromRGB(255, 150, 100)) end
+                        task.wait(3)
                     end
+                else
+                    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Chegou no livro, mas não apareceu botão de ler.", Color3.fromRGB(255, 150, 100)) end
+                    task.wait(3)
                 end
             else
-                if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Nenhum livro encontrado na casa!", Color3.fromRGB(255, 100, 100)) end
+                -- Agora o log diz exatamente o que deu errado!
+                if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Erro: " .. erroMotivo, Color3.fromRGB(255, 100, 100)) end
                 task.wait(5)
             end
 
