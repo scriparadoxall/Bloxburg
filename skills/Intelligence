@@ -1,4 +1,4 @@
-_G.BookSkills = {}
+_G.Intelligence = {}
 
 local Players = game:GetService("Players")
 local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -30,7 +30,7 @@ local SeatObjects = {
 local function GetPlayerHouse()
     local plots = workspace:FindFirstChild("Plots")
     if not plots then return nil end
-    
+
     for _, plot in ipairs(plots:GetChildren()) do
         local owner = plot:FindFirstChild("Owner")
         if owner and owner.Value == Players.LocalPlayer then
@@ -44,10 +44,10 @@ end
 local function GetRandomObject(objectList)
     local house = GetPlayerHouse()
     if not house then return nil end
-    
+
     local objectsFolder = house:FindFirstChild("Objects")
     if not objectsFolder then return nil end
-    
+
     -- Embaralha e tenta achar algum objeto válido da lista
     local availableObjects = {}
     for _, objName in ipairs(objectList) do
@@ -56,12 +56,12 @@ local function GetRandomObject(objectList)
             table.insert(availableObjects, obj)
         end
     end
-    
+
     if #availableObjects > 0 then
         local randomIndex = math.random(1, #availableObjects)
         return availableObjects[randomIndex]
     end
-    
+
     return nil
 end
 
@@ -69,7 +69,7 @@ end
 local function ClickOnPart(part)
     local camera = workspace.CurrentCamera
     local screenPoint, onScreen = camera:WorldToScreenPoint(part.Position)
-    
+
     if onScreen then
         VirtualUser:Button1Down(Vector2.new(screenPoint.X, screenPoint.Y), camera.CFrame)
         task.wait(0.1)
@@ -81,14 +81,14 @@ end
 local function InteractWithUI(validWords)
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
     local interactUI = playerGui:FindFirstChild("_interactUI")
-    
+
     if interactUI then
         local indicator = interactUI:FindFirstChild("InteractIndicator")
         if indicator then
             local textLabel = indicator:FindFirstChild("TextLabel")
             if textLabel then
                 local currentText = string.lower(textLabel.Text)
-                
+
                 -- Checa se o texto da tela bate com alguma das palavras que queremos
                 for _, word in ipairs(validWords) do
                     if string.find(currentText, string.lower(word)) then
@@ -108,57 +108,57 @@ end
 -- LOOP PRINCIPAL DO FARM
 ---------------------------------------------------------
 
-function _G.BookSkills.Start()
+function _G.Intelligence.Start()
     if isFarmingIntel then return end
     isFarmingIntel = true
-    
+
     if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Farm de Inteligência Iniciado!", Color3.fromRGB(150, 150, 255)) end
-    
+
     task.spawn(function()
         while isFarmingIntel do
             -------------------------------------------------
             -- PASSO 1: Achar e pegar um Livro Aleatório
             -------------------------------------------------
             local randomBookTarget = GetRandomObject(BookObjects)
-            
+
             if randomBookTarget then
                 if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Indo até: " .. randomBookTarget.Name, Color3.fromRGB(200, 200, 200)) end
-                
-                -- Usa sua função de andar do SmartDoor (Substitua "WalkTo" pelo nome real da função que você usa para andar)
-                if _G.SmartDoor and _G.SmartDoor.WalkTo then
-                    _G.SmartDoor.WalkTo(randomBookTarget.PrimaryPart and randomBookTarget.PrimaryPart.Position or randomBookTarget.Position)
+
+                -- Usa sua função de andar do SmartDoor
+                if _G.SmartDoor and _G.SmartDoor.IrPara then
+                    _G.SmartDoor.IrPara(randomBookTarget.PrimaryPart and randomBookTarget.PrimaryPart or randomBookTarget)
                 end
-                
+
                 task.wait(1) -- Espera estabilizar
-                
+
                 -- Interagir com o livro (Muitas vezes em Bloxburg precisamos clicar primeiro e depois apertar E na UI)
                 -- ClickOnPart(randomBookTarget.PrimaryPart or randomBookTarget)
                 -- task.wait(0.5)
-                
+
                 -- Tenta apertar E se aparecer "Take", "Read" ou "Take Book"
                 local hasTakenBook = InteractWithUI({"Take", "Read", "Book"})
-                
+
                 if hasTakenBook then
                     task.wait(1)
-                    
+
                     -------------------------------------------------
                     -- PASSO 2: Achar Assento e Sentar
                     -------------------------------------------------
                     local randomSeatTarget = GetRandomObject(SeatObjects)
-                    
+
                     if randomSeatTarget then
                         if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Buscando assento: " .. randomSeatTarget.Name, Color3.fromRGB(200, 200, 200)) end
-                        
+
                         -- Anda até o assento
-                        if _G.SmartDoor and _G.SmartDoor.WalkTo then
-                            _G.SmartDoor.WalkTo(randomSeatTarget.PrimaryPart and randomSeatTarget.PrimaryPart.Position or randomSeatTarget.Position)
+                        if _G.SmartDoor and _G.SmartDoor.IrPara then
+                            _G.SmartDoor.IrPara(randomSeatTarget.PrimaryPart and randomSeatTarget.PrimaryPart or randomSeatTarget)
                         end
-                        
+
                         task.wait(1)
-                        
+
                         -- Checa se aparece "Sit" ou "Use" e aperta E
                         local hasSat = InteractWithUI({"Sit", "Use"})
-                        
+
                         if hasSat then
                             if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Lendo...", Color3.fromRGB(100, 255, 100)) end
                             -- Fica lendo por um tempo antes de recomeçar o ciclo
@@ -170,15 +170,15 @@ function _G.BookSkills.Start()
                 if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Nenhum livro encontrado na casa!", Color3.fromRGB(255, 100, 100)) end
                 task.wait(5)
             end
-            
+
             task.wait(1)
         end
     end)
 end
 
-function _G.BookSkills.Stop()
+function _G.Intelligence.Stop()
     isFarmingIntel = false
     if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Farm de Inteligência parado.", Color3.fromRGB(255, 100, 100)) end
 end
 
-return _G.BookSkills
+return _G.Intelligence
