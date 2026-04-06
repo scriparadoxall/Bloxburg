@@ -6,13 +6,33 @@ local isFarmingIntel = false
 local currentMacroId = 0
 
 ---------------------------------------------------------
--- LISTAS DE ALVOS
+-- GERENCIADOR DE MÓDULOS (Cache para não lagar)
 ---------------------------------------------------------
-local BookObjects = {"Simplicity Bookcase", "Large Simplicity Bookcase", "Simplicity Dresser", "Simplicity Table", "Ordered Plain Books", "Book"}
-local SeatObjects = {"Simple Sofa", "MightyFlush Toilet", "Chair", "Sofa", "Bed", "Stool", "Bench"}
+local ModulosCarregados = {}
+
+local function CarregarModulo(nomeExato)
+    if ModulosCarregados[nomeExato] then return ModulosCarregados[nomeExato] end
+
+    local url = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/" .. nomeExato
+    local success, result = pcall(function()
+        return loadstring(game:HttpGet(url))()
+    end)
+
+    if success and result then
+        ModulosCarregados[nomeExato] = result
+        return result
+    end
+    return nil
+end
 
 ---------------------------------------------------------
--- FUNÇÕES DE DEBUG VISUAL (Apenas o alvo atual)
+-- LISTAS DE ALVOS (Camas removidas!)
+---------------------------------------------------------
+local BookObjects = {"Simplicity Bookcase", "Large Simplicity Bookcase", "Simplicity Dresser", "Simplicity Table", "Ordered Plain Books", "Book"}
+local SeatObjects = {"Simple Sofa", "MightyFlush Toilet", "Chair", "Sofa", "Stool", "Bench"}
+
+---------------------------------------------------------
+-- FUNÇÕES DE DEBUG VISUAL
 ---------------------------------------------------------
 local function LimparMarcacoes()
     for _, obj in pairs(workspace:GetDescendants()) do
@@ -26,7 +46,6 @@ local function DestacarAlvo(alvo)
     LimparMarcacoes()
     if not _G.MostrarObjetosIntel or not alvo then return end
 
-    -- O Highlight precisa ficar num Model ou BasePart para funcionar bem no Bloxburg
     local modelToHighlight = alvo
     if not modelToHighlight:IsA("Model") and not modelToHighlight:IsA("BasePart") then
         modelToHighlight = alvo:FindFirstAncestorWhichIsA("Model") or alvo.Parent
@@ -35,7 +54,7 @@ local function DestacarAlvo(alvo)
     if modelToHighlight and (modelToHighlight:IsA("Model") or modelToHighlight:IsA("BasePart")) then
         local hl = Instance.new("Highlight")
         hl.Name = "IntelDebugHighlight"
-        hl.FillColor = Color3.fromRGB(0, 255, 100) -- VERDE (Objeto que está sendo usado)
+        hl.FillColor = Color3.fromRGB(0, 255, 100) -- VERDE
         hl.FillTransparency = 0.5
         hl.OutlineColor = Color3.fromRGB(0, 200, 50)
         hl.Parent = modelToHighlight
@@ -43,8 +62,27 @@ local function DestacarAlvo(alvo)
 end
 
 ---------------------------------------------------------
--- FUNÇÕES AUXILIARES E UI
+-- FUNÇÕES AUXILIARES, CÂMERA E UI
 ---------------------------------------------------------
+local function FocarCameraECorpo(alvoPart)
+    if not alvoPart then return end
+    local char = Players.LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    
+    local hrp = char.HumanoidRootPart
+    local posAlvo = alvoPart:IsA("Model") and (alvoPart.PrimaryPart and alvoPart.PrimaryPart.Position or alvoPart:GetPivot().Position) or alvoPart.Position
+    
+    -- Vira o corpo de frente pro objeto
+    hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(posAlvo.X, hrp.Position.Y, posAlvo.Z))
+    
+    -- Foca a câmera no objeto
+    local camSystem = CarregarModulo("smart_cam")
+    if camSystem and camSystem.OlharPara then
+        camSystem.OlharPara(alvoPart)
+    end
+    task.wait(0.2)
+end
+
 local function GetPlayerHouse()
     local plots = workspace:FindFirstChild("Plots")
     if not plots then return nil end
@@ -121,7 +159,6 @@ local function SafeClick(element)
     return success
 end
 
--- Aperta "E" na tela de interação
 local function InteractOnce(validWords)
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
     local interactUI = playerGui:FindFirstChild("_interactUI")
@@ -146,7 +183,6 @@ local function InteractOnce(validWords)
     return false
 end
 
--- Verifica se tem algo na mão
 local function CheckHandAction()
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
     local hudGui = playerGui:FindFirstChild("HUDGui")
@@ -201,12 +237,15 @@ function _G.Intelligence.Start()
                 local randomBook, erroBook, bookName = GetRandomObject(BookObjects)
                 
                 if randomBook then
-                    DestacarAlvo(randomBook) -- Marca o livro de VERDE
-                    
+                    DestacarAlvo(randomBook)
                     if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Buscando livro: " .. tostring(bookName), Color3.fromRGB(200, 200, 200)) end
-                    if _G.SmartDoor and _G.SmartDoor.IrPara then _G.SmartDoor.IrPara(randomBook) end
                     
-                    task.wait(1)
+                    local doorSystem = CarregarModulo("smart_door.lua")
+                    if doorSystem and doorSystem.IrPara then 
+                        doorSystem.IrPara(randomBook) 
+                    end
+                    
+                    FocarCameraECorpo(randomBook)
                     
                     if InteractOnce({"take", "read", "book", "ler", "pegar"}) then
                         local attempts = 0
@@ -227,18 +266,22 @@ function _G.Intelligence.Start()
                     task.wait(5)
                 end
 
-            -- PASSO 3: ESTÁ COM O LIVRO NA MÃO
+            -- PASSO 3: ESTÁ COM O LIVRO NA MÃO E EM PÉ
             elseif temLivroNaMao then
                 if not hum.Sit then
                     local randomSeat, erroSeat, seatName = GetRandomObject(SeatObjects)
                     
                     if randomSeat then
-                        DestacarAlvo(randomSeat) -- Marca o assento de VERDE
-                        
+                        DestacarAlvo(randomSeat)
                         if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Indo sentar em: " .. tostring(seatName), Color3.fromRGB(200, 200, 200)) end
-                        if _G.SmartDoor and _G.SmartDoor.IrPara then _G.SmartDoor.IrPara(randomSeat) end
                         
-                        task.wait(1)
+                        local doorSystem = CarregarModulo("smart_door.lua")
+                        if doorSystem and doorSystem.IrPara then 
+                            doorSystem.IrPara(randomSeat) 
+                        end
+                        
+                        FocarCameraECorpo(randomSeat)
+                        
                         if InteractOnce({"sit", "use", "sentar", "usar"}) then
                             task.wait(2)
                         end
@@ -248,7 +291,7 @@ function _G.Intelligence.Start()
                         task.wait(15)
                     end
                 
-                -- PASSO 4: LENDO
+                -- PASSO 4: LENDO (Já sentado ou lendo em pé animado)
                 else
                     if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Lendo tranquilo...", Color3.fromRGB(100, 255, 100)) end
                     
@@ -259,7 +302,7 @@ function _G.Intelligence.Start()
                     
                     hum.Jump = true 
                     task.wait(1)
-                    LimparMarcacoes() -- Limpa o verde depois que terminar de ler
+                    LimparMarcacoes() 
                 end
             end
             
@@ -273,12 +316,7 @@ function _G.Intelligence.Stop()
     currentMacroId = currentMacroId + 1
     LimparMarcacoes()
     
-    local doorSystem = nil
-    pcall(function()
-        local url = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/smart_door.lua"
-        doorSystem = loadstring(game:HttpGet(url))()
-    end)
-
+    local doorSystem = CarregarModulo("smart_door.lua")
     if doorSystem and type(doorSystem.Cancelar) == "function" then
         doorSystem.Cancelar()
     end
