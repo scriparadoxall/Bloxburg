@@ -13,8 +13,8 @@ end
 if _G.SmartDoor and typeof(_G.SmartDoor.Cancelar) == "function" then
     pcall(function() _G.SmartDoor.Cancelar() end)
 end
-if _G.BookSkills and typeof(_G.BookSkills.Stop) == "function" then
-    pcall(function() _G.BookSkills.Stop() end)
+if _G.Intelligence and typeof(_G.Intelligence.Stop) == "function" then
+    pcall(function() _G.Intelligence.Stop() end)
 end
 task.wait(0.2) 
 
@@ -28,13 +28,13 @@ local backendURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/ma
 local loadFunc, loadErr = loadstring(game:HttpGet(backendURL))
 if loadFunc then loadFunc() else warn("ERRO NO CÓDIGO DA COMIDA: " .. tostring(loadErr)) return end
 
--- 3. CARREGAR BOOK SKILLS (Nova pasta: skills)
-local bookSkillsURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/skills/book_skills.lua?t=" .. tostring(tick())
-local loadBookFunc, bookErr = loadstring(game:HttpGet(bookSkillsURL))
-if loadBookFunc then 
-    loadBookFunc() 
+-- 3. CARREGAR INTELLIGENCE (Lendo do arquivo "Intelligence" exato que está na print)
+local intelURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/skills/Intelligence?t=" .. tostring(tick())
+local loadIntelFunc, intelErr = loadstring(game:HttpGet(intelURL))
+if loadIntelFunc then 
+    loadIntelFunc() 
 else 
-    warn("ERRO NO MÓDULO BOOK SKILLS: " .. tostring(bookErr)) 
+    warn("ERRO NO MÓDULO INTELLIGENCE: " .. tostring(intelErr)) 
 end
 
 if not _G.BloxburgChef then return end
@@ -206,16 +206,16 @@ local function LoadMainHub()
             isIntelActive = false
             IntelFarmBtn.Text = "▶ Iniciar Inteligência"
             IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
-            if _G.BookSkills then _G.BookSkills.Stop() end
+            if _G.Intelligence then _G.Intelligence.Stop() end
         else
-            if not _G.BookSkills then
-                warn("Módulo de livros ainda não foi carregado!")
+            if not _G.Intelligence then
+                warn("Módulo de Inteligência ainda não foi carregado!")
                 return
             end
             isIntelActive = true
             IntelFarmBtn.Text = "🛑 Parar Inteligência"
             IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-            _G.BookSkills.Start()
+            _G.Intelligence.Start()
         end
     end)
 
