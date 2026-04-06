@@ -1,3 +1,63 @@
+-- =========================================================================
+-- FUNÇÃO DE CÂMERA INTELIGENTE (Anti-Parede)
+-- Coloque isso acima do seu MoveToStation
+-- =========================================================================
+local function PosicionarCameraSegura(alvoPart)
+    local Camera = workspace.CurrentCamera
+    local char = Players.LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    -- Pega a posição da cabeça (ou calcula uma altura aproximada)
+    local headPos = char:FindFirstChild("Head") and char.Head.Position or (hrp.Position + Vector3.new(0, 1.5, 0))
+    local alvoPos = alvoPart:IsA("Model") and (alvoPart.PrimaryPart and alvoPart.PrimaryPart.Position or alvoPart:GetPivot().Position) or alvoPart.Position
+
+    -- Calcula para que lado o alvo está em relação ao jogador
+    local direcaoAlvo = CFrame.lookAt(hrp.Position, Vector3.new(alvoPos.X, hrp.Position.Y, alvoPos.Z))
+
+    -- Lista de posições para testar (Tentando achar um ângulo sem parede)
+    -- 1º: Atrás e cima | 2º: Lado Direito | 3º: Lado Esquerdo | 4º: Bem de Cima
+    local offsets = {
+        Vector3.new(0, 3, 5),
+        Vector3.new(4, 3, 3),
+        Vector3.new(-4, 3, 3),
+        Vector3.new(0, 6, 1)
+    }
+
+    -- Configura o "raio" para ignorar o próprio boneco e o móvel que vamos interagir
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.FilterDescendantsInstances = {char, alvoPart.Parent}
+
+    local melhorPos = headPos + Vector3.new(0, 2, 2) -- Posição de emergência
+
+    for _, offset in ipairs(offsets) do
+        -- Calcula onde a câmera ficaria nesse offset específico
+        local posTeste = (direcaoAlvo * CFrame.new(offset)).Position
+        local direcaoRay = posTeste - headPos
+
+        -- Lança o raio da cabeça até a posição da câmera
+        local resultado = workspace:Raycast(headPos, direcaoRay, rayParams)
+
+        if not resultado then
+            -- Caminho livre! Nenhuma parede atrapalhando.
+            melhorPos = posTeste
+            break
+        elseif (resultado.Position - headPos).Magnitude > 2.5 then
+            -- Bateu numa parede, mas tem espaço suficiente para a câmera não bugar
+            melhorPos = resultado.Position - (direcaoRay.Unit * 0.5) -- Recua meio metro da parede
+            break
+        end
+    end
+
+    -- Aplica a câmera focando no objeto
+    Camera.CameraType = Enum.CameraType.Scriptable
+    Camera.CFrame = CFrame.lookAt(melhorPos, alvoPos)
+end
+
+-- =========================================================================
+-- SUA FUNÇÃO ATUALIZADA (Mexendo APENAS na Câmera)
+-- =========================================================================
 local function MoveToStation(stationType)
     -- 1. SEARCH: Procura o objeto e a peça de interação exata
     local searcher = CarregarModulo("smartSearch")
@@ -15,24 +75,22 @@ local function MoveToStation(stationType)
 
     local chegou_no_destino = doorSystem.IrPara(part)
 
-    -- 3. CHEGOU? Arruma a câmera e aperta E!
+    -- 3. CHEGOU? Arruma a câmera (sem girar o corpo) e aperta E!
     if chegou_no_destino then
-        local hrp = LocalPlayer.Character.HumanoidRootPart
         
-        -- Vira o corpo do boneco de frente para o móvel
-        hrp.CFrame = CFrame.lookAt(hrp.Position, Vector3.new(part.Position.X, hrp.Position.Y, part.Position.Z))
-        
-        -- CAM: Recebe a MESMA peça que o search achou e foca nela
-        local camSystem = CarregarModulo("smart_cam")
-        if camSystem then
-            camSystem.OlharPara(part)
-        end
+        -- CAM: Usa a nova função que desvia de paredes
+        PosicionarCameraSegura(part)
 
         -- FOOD: Clica!
         task.wait(0.2)
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
         task.wait(0.05)
         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+        
+        -- Devolve a câmera pro jogador depois de interagir
+        task.wait(0.5)
+        workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+        
         return true
     end
 
