@@ -13,27 +13,28 @@ end
 if _G.SmartDoor and typeof(_G.SmartDoor.Cancelar) == "function" then
     pcall(function() _G.SmartDoor.Cancelar() end)
 end
+if _G.BookSkills and typeof(_G.BookSkills.Stop) == "function" then
+    pcall(function() _G.BookSkills.Stop() end)
+end
 task.wait(0.2) 
 
+-- 1. CARREGAR SMART DOOR
 local smartDoorURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/smart_door.lua?t=" .. tostring(tick())
 local loadDoorFunc, errDoor = loadstring(game:HttpGet(smartDoorURL))
+if loadDoorFunc then _G.SmartDoor = loadDoorFunc() else warn("ERRO NO SMART DOOR: " .. tostring(errDoor)) return end
 
-if loadDoorFunc then
-    _G.SmartDoor = loadDoorFunc() 
-else
-    warn("ERRO CRÍTICO AO CARREGAR O SMART DOOR: " .. tostring(errDoor))
-    return
-end
-
+-- 2. CARREGAR BLOXBURG FOOD
 local backendURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/BloxburgFood?t=" .. tostring(tick())
-local code = game:HttpGet(backendURL)
-local loadFunc, loadErr = loadstring(code)
+local loadFunc, loadErr = loadstring(game:HttpGet(backendURL))
+if loadFunc then loadFunc() else warn("ERRO NO CÓDIGO DA COMIDA: " .. tostring(loadErr)) return end
 
-if loadFunc then
-    loadFunc()
-else
-    warn("ERRO CRÍTICO NO CÓDIGO DA COMIDA: " .. tostring(loadErr))
-    return
+-- 3. CARREGAR BOOK SKILLS (Nova pasta: skills)
+local bookSkillsURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/skills/book_skills.lua?t=" .. tostring(tick())
+local loadBookFunc, bookErr = loadstring(game:HttpGet(bookSkillsURL))
+if loadBookFunc then 
+    loadBookFunc() 
+else 
+    warn("ERRO NO MÓDULO BOOK SKILLS: " .. tostring(bookErr)) 
 end
 
 if not _G.BloxburgChef then return end
@@ -124,10 +125,9 @@ local function LoadMainHub()
     local tabButtons = {}
 
     for i, tabName in ipairs(tabs) do
-        -- Criar Botões Laterais
         local TabBtn = Instance.new("TextButton", Sidebar)
         TabBtn.Size = UDim2.new(1, 0, 0, 35)
-        TabBtn.BackgroundColor3 = i == 1 and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(20, 20, 20) -- Seleciona Skills por padrão
+        TabBtn.BackgroundColor3 = i == 1 and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(20, 20, 20)
         TabBtn.BorderSizePixel = 0
         TabBtn.Font = Enum.Font.GothamSemibold
         TabBtn.Text = tabName
@@ -135,14 +135,12 @@ local function LoadMainHub()
         TabBtn.TextSize = 13
         tabButtons[tabName] = TabBtn
 
-        -- Criar Páginas
         local Page = Instance.new("Frame", PagesContainer)
         Page.Size = UDim2.new(1, 0, 1, 0)
         Page.BackgroundTransparency = 1
-        Page.Visible = (i == 1) -- Mostra a aba Skills por padrão
+        Page.Visible = (i == 1)
         pageFrames[tabName] = Page
 
-        -- Lógica de troca de abas
         TabBtn.MouseButton1Click:Connect(function()
             for name, p in pairs(pageFrames) do p.Visible = (name == tabName) end
             for name, btn in pairs(tabButtons) do 
@@ -152,7 +150,7 @@ local function LoadMainHub()
     end
 
     --------------------------
-    -- CONTEÚDO: SKILLS (Atualizado)
+    -- CONTEÚDO: SKILLS
     --------------------------
     local SkillsPage = pageFrames["Skills"]
 
@@ -166,7 +164,7 @@ local function LoadMainHub()
     SkillsLayout.SortOrder = Enum.SortOrder.LayoutOrder
     SkillsLayout.Padding = UDim.new(0, 6)
 
-    -- SESSÃO COOKING (Com automação)
+    -- 1. COOKING
     local CookingFrame = Instance.new("Frame", SkillsScroll)
     CookingFrame.Size = UDim2.new(1, -10, 0, 75)
     CookingFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
@@ -187,14 +185,47 @@ local function LoadMainHub()
     FarmBtn.Font = Enum.Font.GothamBold; FarmBtn.Text = "▶ Iniciar Farm"; FarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255); FarmBtn.TextSize = 12
     Instance.new("UICorner", FarmBtn).CornerRadius = UDim.new(0, 6)
 
-    -- LISTA DAS OUTRAS SKILLS
+    -- 2. INTELLIGENCE
+    local IntelFrame = Instance.new("Frame", SkillsScroll)
+    IntelFrame.Size = UDim2.new(1, -10, 0, 75)
+    IntelFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    Instance.new("UICorner", IntelFrame).CornerRadius = UDim.new(0, 6)
+
+    local IntelTitle = Instance.new("TextLabel", IntelFrame)
+    IntelTitle.BackgroundTransparency = 1; IntelTitle.Position = UDim2.new(0, 10, 0, 5); IntelTitle.Size = UDim2.new(1, -20, 0, 20)
+    IntelTitle.Font = Enum.Font.GothamBold; IntelTitle.Text = "🧠 Intelligence (Auto-Read)"; IntelTitle.TextColor3 = Color3.fromRGB(150, 150, 255); IntelTitle.TextSize = 14; IntelTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+    local IntelFarmBtn = Instance.new("TextButton", IntelFrame)
+    IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40); IntelFarmBtn.Position = UDim2.new(0, 10, 0, 35); IntelFarmBtn.Size = UDim2.new(0, 280, 0, 30)
+    IntelFarmBtn.Font = Enum.Font.GothamBold; IntelFarmBtn.Text = "▶ Iniciar Inteligência"; IntelFarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255); IntelFarmBtn.TextSize = 12
+    Instance.new("UICorner", IntelFarmBtn).CornerRadius = UDim.new(0, 6)
+
+    local isIntelActive = false
+    IntelFarmBtn.MouseButton1Click:Connect(function()
+        if isIntelActive then
+            isIntelActive = false
+            IntelFarmBtn.Text = "▶ Iniciar Inteligência"
+            IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
+            if _G.BookSkills then _G.BookSkills.Stop() end
+        else
+            if not _G.BookSkills then
+                warn("Módulo de livros ainda não foi carregado!")
+                return
+            end
+            isIntelActive = true
+            IntelFarmBtn.Text = "🛑 Parar Inteligência"
+            IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+            _G.BookSkills.Start()
+        end
+    end)
+
+    -- OUTRAS SKILLS
     local skillList = {
         {"🎵 Music", Color3.fromRGB(150, 200, 255)},
         {"🏃 Athletic", Color3.fromRGB(255, 100, 100)},
         {"🎨 Art", Color3.fromRGB(255, 150, 200)},
         {"🪴 Gardening", Color3.fromRGB(100, 255, 100)},
         {"✍️ Writing", Color3.fromRGB(200, 200, 200)},
-        {"🧠 Intelligence", Color3.fromRGB(150, 150, 255)},
         {"🎮 Gaming", Color3.fromRGB(150, 255, 150)}
     }
 
@@ -210,14 +241,14 @@ local function LoadMainHub()
 
         local SStatus = Instance.new("TextLabel", SFrame)
         SStatus.BackgroundTransparency = 1; SStatus.Position = UDim2.new(0.5, -10, 0, 0); SStatus.Size = UDim2.new(0.5, 0, 1, 0)
-        SStatus.Font = Enum.Font.Gotham; SStatus.Text = "Em breve / Coming soon"; SStatus.TextColor3 = Color3.fromRGB(100, 100, 100); SStatus.TextSize = 11; SStatus.TextXAlignment = Enum.TextXAlignment.Right
+        SStatus.Font = Enum.Font.Gotham; SStatus.Text = "Em breve"; SStatus.TextColor3 = Color3.fromRGB(100, 100, 100); SStatus.TextSize = 11; SStatus.TextXAlignment = Enum.TextXAlignment.Right
     end
 
     SkillsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() 
         SkillsScroll.CanvasSize = UDim2.new(0, 0, 0, SkillsLayout.AbsoluteContentSize.Y + 10) 
     end)
 
-    -- PAINEL DE COMIDAS (Flutuante sobre a aba Skills)
+    -- PAINEL DE COMIDAS (Cooking)
     local FoodListPanel = Instance.new("ScrollingFrame", SkillsPage)
     FoodListPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 25); FoodListPanel.Position = UDim2.new(0, 10, 0, 70); FoodListPanel.Size = UDim2.new(0, 150, 0, 145); FoodListPanel.ScrollBarThickness = 4; FoodListPanel.ZIndex = 10; FoodListPanel.Visible = false
     Instance.new("UICorner", FoodListPanel).CornerRadius = UDim.new(0, 6)
@@ -264,7 +295,7 @@ local function LoadMainHub()
     Instance.new("UICorner", DonateBtn).CornerRadius = UDim.new(0, 6)
 
     --------------------------
-    -- CONTEÚDO: AUTOMATIONS (Agora dedicado aos Logs)
+    -- CONTEÚDO: AUTOMATIONS (Logs)
     --------------------------
     local AutoPage = pageFrames["Automations"]
 
@@ -281,14 +312,13 @@ local function LoadMainHub()
         LogPanel.CanvasSize = UDim2.new(0, 0, 0, LogLayout.AbsoluteContentSize.Y)
         LogPanel.CanvasPosition = Vector2.new(0, LogLayout.AbsoluteContentSize.Y)
     end
-    _G.BloxburgChef_AddLog("Módulos carregados com sucesso!", Color3.fromRGB(50, 255, 255))
+    _G.BloxburgChef_AddLog("Hub iniciado com sucesso!", Color3.fromRGB(50, 255, 255))
 
     --------------------------
-    -- CONTEÚDO: CONFIG (Úteis)
+    -- CONTEÚDO: CONFIG
     --------------------------
     local ConfigPage = pageFrames["Config"]
 
-    -- BOTÃO ANTI-AFK
     local AntiAfkBtn = Instance.new("TextButton", ConfigPage)
     AntiAfkBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); AntiAfkBtn.Position = UDim2.new(0, 10, 0, 10); AntiAfkBtn.Size = UDim2.new(0, 200, 0, 40)
     AntiAfkBtn.Font = Enum.Font.GothamSemibold; AntiAfkBtn.Text = "🛡️ Anti-AFK [OFF]"; AntiAfkBtn.TextColor3 = Color3.fromRGB(255, 100, 100); AntiAfkBtn.TextSize = 14
@@ -315,31 +345,20 @@ local function LoadMainHub()
         end
     end)
 
-    -- BOTÃO DE ROTA VISUAL
     local RouteBtn = Instance.new("TextButton", ConfigPage)
     RouteBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); RouteBtn.Position = UDim2.new(0, 10, 0, 60); RouteBtn.Size = UDim2.new(0, 200, 0, 40)
     RouteBtn.Font = Enum.Font.GothamSemibold; RouteBtn.TextSize = 14
     Instance.new("UICorner", RouteBtn).CornerRadius = UDim.new(0, 6)
 
-    if _G.MostrarBolinhas then
-        RouteBtn.Text = "👁️ Rota Visual [ON]"
-        RouteBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
-    else
-        RouteBtn.Text = "👁️ Rota Visual [OFF]"
-        RouteBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
-    end
+    if _G.MostrarBolinhas then RouteBtn.Text = "👁️ Rota Visual [ON]"; RouteBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
+    else RouteBtn.Text = "👁️ Rota Visual [OFF]"; RouteBtn.TextColor3 = Color3.fromRGB(255, 100, 100) end
 
     RouteBtn.MouseButton1Click:Connect(function()
         _G.MostrarBolinhas = not _G.MostrarBolinhas
         if _G.MostrarBolinhas then
-            RouteBtn.Text = "👁️ Rota Visual [ON]"
-            RouteBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
-            if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Rota visual ativada!", Color3.fromRGB(100, 255, 100)) end
+            RouteBtn.Text = "👁️ Rota Visual [ON]"; RouteBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
         else
-            RouteBtn.Text = "👁️ Rota Visual [OFF]"
-            RouteBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
-            if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Rota visual desativada.", Color3.fromRGB(255, 100, 100)) end
-            
+            RouteBtn.Text = "👁️ Rota Visual [OFF]"; RouteBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
             local folder = workspace:FindFirstChild("CaminhoSmartDoor")
             if folder then folder:Destroy() end
         end
@@ -381,19 +400,13 @@ else
     CheckboxBtn.Font = Enum.Font.GothamBold; CheckboxBtn.Text = ""; CheckboxBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     Instance.new("UICorner", CheckboxBtn).CornerRadius = UDim.new(0, 4)
 
-    local CheckboxLabel = Instance.new("TextLabel", WarnFrame)
-    CheckboxLabel.BackgroundTransparency = 1; CheckboxLabel.Position = UDim2.new(0, 50, 1, -60); CheckboxLabel.Size = UDim2.new(0, 200, 0, 20)
-    CheckboxLabel.Font = Enum.Font.Gotham; CheckboxLabel.Text = "Don't show this again"; CheckboxLabel.TextColor3 = Color3.fromRGB(200, 200, 200); CheckboxLabel.TextSize = 13; CheckboxLabel.TextXAlignment = Enum.TextXAlignment.Left
-
     local isChecked = false
     CheckboxBtn.MouseButton1Click:Connect(function()
         isChecked = not isChecked
         if isChecked then
-            CheckboxBtn.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
-            CheckboxBtn.Text = "X"
+            CheckboxBtn.BackgroundColor3 = Color3.fromRGB(80, 200, 80); CheckboxBtn.Text = "X"
         else
-            CheckboxBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-            CheckboxBtn.Text = ""
+            CheckboxBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); CheckboxBtn.Text = ""
         end
     end)
 
@@ -404,9 +417,7 @@ else
 
     ContinueBtn.MouseButton1Click:Connect(function()
         if isChecked then
-            pcall(function()
-                if writefile then writefile("Scriparadoxall_Warning.txt", "true") end
-            end)
+            pcall(function() if writefile then writefile("Scriparadoxall_Warning.txt", "true") end end)
         end
         WarningUI:Destroy()
         LoadMainHub()
