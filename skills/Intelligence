@@ -8,37 +8,45 @@ local isFarmingIntel = false
 ---------------------------------------------------------
 -- CONFIGURAÇÕES DE OBJETOS
 ---------------------------------------------------------
--- Agora ele procura se o nome CONTÉM essas palavras, não precisa ser exato!
 local BookObjects = {
     "Simplicity Bookcase",
     "Large Simplicity Bookcase",
     "Simplicity Dresser",
     "Simplicity Table",
     "Ordered Plain Books",
-    "Book" -- Adicionei 'Book' genérico para achar qualquer livro!
+    "Book"
 }
 
 local SeatObjects = {
     "Simple Sofa",
     "MightyFlush Toilet",
-    "Chair", -- Genéricos para ajudar a achar assentos
+    "Chair",
     "Sofa",
-    "Bed"
+    "Bed",
+    "Stool"
 }
 
 ---------------------------------------------------------
--- FUNÇÕES AUXILIARES MELHORADAS
+-- FUNÇÕES AUXILIARES
 ---------------------------------------------------------
 
--- Encontra a casa do jogador local automaticamente (Corrigido para Bloxburg)
+-- Encontra a casa (Agora usa exatamente o padrão Plot_SeuNick)
 local function GetPlayerHouse()
     local plots = workspace:FindFirstChild("Plots")
     if not plots then return nil end
 
+    -- Busca direta e garantida (Ex: Plot_drivingnsane)
+    local myPlotName = "Plot_" .. Players.LocalPlayer.Name
+    local myPlot = plots:FindFirstChild(myPlotName)
+    
+    if myPlot then
+        return myPlot:FindFirstChild("House")
+    end
+
+    -- Plano B caso o nick mude ou algo do tipo
     for _, plot in ipairs(plots:GetChildren()) do
         local owner = plot:FindFirstChild("Owner")
         if owner then
-            -- Bloxburg às vezes usa Instance, às vezes StringValue para o Owner
             if typeof(owner.Value) == "Instance" and owner.Value == Players.LocalPlayer then
                 return plot:FindFirstChild("House")
             elseif type(owner.Value) == "string" and owner.Value == Players.LocalPlayer.Name then
@@ -49,35 +57,48 @@ local function GetPlayerHouse()
     return nil
 end
 
--- Pega um objeto aleatório da casa baseado nas nossas listas (Busca inteligente)
+-- Pega um objeto aleatório
 local function GetRandomObject(objectList)
     local house = GetPlayerHouse()
-    if not house then return nil, "Casa (Plot) não encontrada" end
+    if not house then return nil, "Casa (Plot_".. Players.LocalPlayer.Name ..") não encontrada no mapa." end
 
     local objectsFolder = house:FindFirstChild("Objects")
-    if not objectsFolder then return nil, "Pasta de objetos não carregou" end
+    if not objectsFolder then return nil, "Pasta 'Objects' não encontrada na sua casa." end
 
     local availableObjects = {}
     
     for _, obj in ipairs(objectsFolder:GetChildren()) do
         for _, objName in ipairs(objectList) do
-            -- Procura ignorando maiúsculas/minúsculas e espaços extras
             if string.find(string.lower(obj.Name), string.lower(objName)) then
                 table.insert(availableObjects, obj)
-                break -- Já achou, vai pro próximo objeto do mapa
+                break
             end
         end
     end
 
     if #availableObjects > 0 then
         local randomIndex = math.random(1, #availableObjects)
-        return availableObjects[randomIndex], "Sucesso"
+        local chosenObj = availableObjects[randomIndex]
+        
+        -- Se o objeto tiver partes internas interativas (como o .Books que você mandou), pega elas como alvo para mirar melhor
+        local targetPart = chosenObj
+        if chosenObj:FindFirstChild("ObjectModel") then
+            if chosenObj.ObjectModel:FindFirstChild("Books") then
+                targetPart = chosenObj.ObjectModel.Books
+            elseif chosenObj.ObjectModel:FindFirstChild("Door1") then
+                targetPart = chosenObj.ObjectModel.Door1
+            end
+        elseif chosenObj:FindFirstChild("ItemHolder") then
+            targetPart = chosenObj.ItemHolder
+        end
+        
+        return targetPart, "Sucesso", chosenObj.Name
     end
 
-    return nil, "Nenhum móvel da lista foi encontrado na casa"
+    return nil, "Nenhum móvel compatível com a lista foi achado."
 end
 
--- Verifica a UI e aperta "E" se achar as palavras-chave
+-- Verifica a UI e aperta "E"
 local function InteractWithUI(validWords)
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
     local interactUI = playerGui:FindFirstChild("_interactUI")
@@ -118,19 +139,17 @@ function _G.Intelligence.Start()
             -------------------------------------------------
             -- PASSO 1: Achar e pegar um Livro Aleatório
             -------------------------------------------------
-            local randomBookTarget, erroMotivo = GetRandomObject(BookObjects)
+            local randomBookTarget, erroMotivo, bookName = GetRandomObject(BookObjects)
 
             if randomBookTarget then
-                if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Indo até: " .. randomBookTarget.Name, Color3.fromRGB(200, 200, 200)) end
+                if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Indo até: " .. tostring(bookName), Color3.fromRGB(200, 200, 200)) end
 
-                -- Usa sua função de andar do SmartDoor
                 if _G.SmartDoor and _G.SmartDoor.IrPara then
                     _G.SmartDoor.IrPara(randomBookTarget)
                 end
 
-                task.wait(1)
+                task.wait(1.5)
 
-                -- Tenta apertar E se aparecer "Take", "Read" ou "Book"
                 local hasTakenBook = InteractWithUI({"take", "read", "book", "ler", "pegar"})
 
                 if hasTakenBook then
@@ -139,35 +158,35 @@ function _G.Intelligence.Start()
                     -------------------------------------------------
                     -- PASSO 2: Achar Assento e Sentar
                     -------------------------------------------------
-                    local randomSeatTarget, seatMotivo = GetRandomObject(SeatObjects)
+                    local randomSeatTarget, seatMotivo, seatName = GetRandomObject(SeatObjects)
 
                     if randomSeatTarget then
-                        if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Buscando assento: " .. randomSeatTarget.Name, Color3.fromRGB(200, 200, 200)) end
+                        if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Buscando assento: " .. tostring(seatName), Color3.fromRGB(200, 200, 200)) end
 
-                        -- Anda até o assento
                         if _G.SmartDoor and _G.SmartDoor.IrPara then
                             _G.SmartDoor.IrPara(randomSeatTarget)
                         end
 
-                        task.wait(1)
+                        task.wait(1.5)
 
-                        -- Checa se aparece "Sit" ou "Use" e aperta E
                         local hasSat = InteractWithUI({"sit", "use", "sentar", "usar"})
 
                         if hasSat then
                             if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Lendo...", Color3.fromRGB(100, 255, 100)) end
                             task.wait(15) 
+                        else
+                            if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Chegou no assento mas a UI não apareceu.", Color3.fromRGB(255, 150, 100)) end
+                            task.wait(2)
                         end
                     else
                         if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Assento não achado: " .. seatMotivo, Color3.fromRGB(255, 150, 100)) end
                         task.wait(3)
                     end
                 else
-                    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Chegou no livro, mas não apareceu botão de ler.", Color3.fromRGB(255, 150, 100)) end
+                    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Chegou na estante, mas não deu para pegar o livro.", Color3.fromRGB(255, 150, 100)) end
                     task.wait(3)
                 end
             else
-                -- Agora o log diz exatamente o que deu errado!
                 if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Erro: " .. erroMotivo, Color3.fromRGB(255, 100, 100)) end
                 task.wait(5)
             end
