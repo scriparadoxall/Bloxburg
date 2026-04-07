@@ -8,23 +8,22 @@ function SmartCam.OlharPara(alvoPart)
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
 
-    -- Posição do alvo
     local alvoPos = alvoPart:IsA("Model") and (alvoPart.PrimaryPart and alvoPart.PrimaryPart.Position or alvoPart:GetPivot().Position) or alvoPart.Position
     local headPos = char:FindFirstChild("Head") and char.Head.Position or (hrp.Position + Vector3.new(0, 1.5, 0))
 
-    -- Cálculo de posição segura (anti-parede)
     local direcaoCorpo = CFrame.new(hrp.Position, Vector3.new(alvoPos.X, hrp.Position.Y, alvoPos.Z))
     local offsets = {
-        Vector3.new(0, 3, 4),   -- Atrás
-        Vector3.new(3, 2, 2),   -- Lado
-        Vector3.new(0, 5, 0)    -- Cima
+        Vector3.new(0, 2.5, 4),   -- Atrás
+        Vector3.new(3, 2, 2),     -- Direita
+        Vector3.new(-3, 2, 2),    -- Esquerda
+        Vector3.new(0, 4, 1)      -- Cima
     }
 
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
     rayParams.FilterDescendantsInstances = {char, alvoPart.Parent, workspace:FindFirstChild("Plots")}
 
-    local melhorPos = headPos + Vector3.new(0, 3, 2)
+    local melhorPos = headPos + Vector3.new(0, 2.5, 3)
 
     for _, offset in ipairs(offsets) do
         local posTeste = (direcaoCorpo * CFrame.new(offset)).Position
@@ -35,30 +34,26 @@ function SmartCam.OlharPara(alvoPart)
         end
     end
 
-    -- EXECUÇÃO DO FOCO
     Camera.CameraType = Enum.CameraType.Scriptable
     
-    local tweenInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+    local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
     local tween = TweenService:Create(Camera, tweenInfo, {
         CFrame = CFrame.lookAt(melhorPos, alvoPos)
     })
     
     tween:Play()
-    
-    -- Espera o tempo exato do movimento e já libera a câmera
-    task.delay(0.5, function()
-        SmartCam.Reset()
-    end)
+    tween.Completed:Wait() -- Espera o movimento terminar antes de deixar o bot apertar 'E'
 end
 
 function SmartCam.Reset()
     local Camera = workspace.CurrentCamera
-    if Camera.CameraType ~= Enum.CameraType.Custom then
-        Camera.CameraType = Enum.CameraType.Custom
-        -- Garante que o AutoRotate do boneco volte ao normal
-        if Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
-            Players.LocalPlayer.Character.Humanoid.AutoRotate = true
-        end
+    local char = Players.LocalPlayer.Character
+    local hum = char and char:FindFirstChild("Humanoid")
+    
+    -- Força a câmera voltar ao normal e grudar no boneco
+    Camera.CameraType = Enum.CameraType.Custom
+    if hum then
+        Camera.CameraSubject = hum
     end
 end
 
