@@ -5,148 +5,47 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local isFarmingIntel = false
 local currentMacroId = 0
 
----------------------------------------------------------
--- GERENCIADOR DE MÓDULOS
----------------------------------------------------------
-local ModulosCarregados = {}
+-- Configurações
+local BookObjects = {"Bookcase", "Dresser", "Table", "Books", "Book"}
+local SeatObjects = {"Sofa", "Toilet", "Chair", "Stool", "Bench"} -- CAMA (Bed) REMOVIDA
 
 local function CarregarModulo(nomeExato)
-    if ModulosCarregados[nomeExato] then return ModulosCarregados[nomeExato] end
     local url = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/" .. nomeExato
-    local success, result = pcall(function()
-        return loadstring(game:HttpGet(url))()
-    end)
-    if success and result then
-        ModulosCarregados[nomeExato] = result
-        return result
-    end
-    return nil
+    local s, r = pcall(function() return loadstring(game:HttpGet(url))() end)
+    return s and r or nil
 end
 
----------------------------------------------------------
--- LISTAS DE ALVOS (Camas removidas)
----------------------------------------------------------
-local BookObjects = {"Simplicity Bookcase", "Large Simplicity Bookcase", "Simplicity Dresser", "Simplicity Table", "Ordered Plain Books", "Book"}
-local SeatObjects = {"Simple Sofa", "MightyFlush Toilet", "Chair", "Sofa", "Stool", "Bench"}
-
----------------------------------------------------------
--- FUNÇÃO DE CÂMERA INTELIGENTE (SEM GIRAR O CORPO)
----------------------------------------------------------
-local function PosicionarCameraSegura(alvoPart)
-    local Camera = workspace.CurrentCamera
-    local char = Players.LocalPlayer.Character
-    local hum = char:FindFirstChild("Humanoid")
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp or not hum then return end
-
-    -- Desativa a rotação automática do boneco temporariamente
-    hum.AutoRotate = false 
-
-    local headPos = char:FindFirstChild("Head") and char.Head.Position or (hrp.Position + Vector3.new(0, 1.5, 0))
-    local alvoPos = alvoPart:IsA("Model") and (alvoPart.PrimaryPart and alvoPart.PrimaryPart.Position or alvoPart:GetPivot().Position) or alvoPart.Position
-
-    -- Calcula a direção baseada na posição atual do boneco (sem girar ele)
-    local direcaoBase = CFrame.new(hrp.Position, Vector3.new(alvoPos.X, hrp.Position.Y, alvoPos.Z))
-
-    -- Testes de posição da câmera para desviar de paredes
-    local offsets = {
-        Vector3.new(0, 3, 5),   -- Atrás
-        Vector3.new(4, 2, 3),   -- Direita
-        Vector3.new(-4, 2, 3),  -- Esquerda
-        Vector3.new(0, 5, 0.5)  -- Cima
-    }
-
-    local rayParams = RaycastParams.new()
-    rayParams.FilterType = Enum.RaycastFilterType.Exclude
-    rayParams.FilterDescendantsInstances = {char, alvoPart.Parent, workspace:FindFirstChild("Plots")}
-
-    local melhorPos = headPos + Vector3.new(0, 2, 1)
-
-    for _, offset in ipairs(offsets) do
-        local posTeste = (direcaoBase * CFrame.new(offset)).Position
-        local direcaoRay = posTeste - headPos
-        local resultado = workspace:Raycast(headPos, direcaoRay, rayParams)
-
-        if not resultado then
-            melhorPos = posTeste
-            break
-        elseif (resultado.Position - headPos).Magnitude > 3 then
-            melhorPos = resultado.Position - (direcaoRay.Unit * 0.5)
-            break
-        end
-    end
-
-    Camera.CameraType = Enum.CameraType.Scriptable
-    TweenService:Create(Camera, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-        CFrame = CFrame.lookAt(melhorPos, alvoPos)
-    }):Play()
-    
-    task.wait(0.5)
-end
-
----------------------------------------------------------
--- FUNÇÕES DE INTERAÇÃO
----------------------------------------------------------
 local function GetPlayerHouse()
-    local plots = workspace:FindFirstChild("Plots")
-    local myPlot = plots and plots:FindFirstChild("Plot_" .. Players.LocalPlayer.Name)
-    if myPlot then return myPlot:FindFirstChild("House") end
-    return nil
+    local p = workspace.Plots:FindFirstChild("Plot_" .. Players.LocalPlayer.Name)
+    return p and p:FindFirstChild("House") or nil
 end
 
-local function GetRandomObject(objectList)
+local function GetTarget(list)
     local house = GetPlayerHouse()
-    local objectsFolder = house and house:FindFirstChild("Objects")
-    if not objectsFolder then return nil end
-
-    local available = {}
-    for _, obj in ipairs(objectsFolder:GetChildren()) do
-        for _, name in ipairs(objectList) do
-            if string.find(string.lower(obj.Name), string.lower(name)) then
-                table.insert(available, obj)
-                break
-            end
+    local folder = house and house:FindFirstChild("Objects")
+    if not folder then return nil end
+    local found = {}
+    for _, obj in ipairs(folder:GetChildren()) do
+        for _, name in ipairs(list) do
+            if string.find(string.lower(obj.Name), string.lower(name)) then table.insert(found, obj) break end
         end
     end
-
-    if #available > 0 then
-        local chosen = available[math.random(1, #available)]
-        local part = chosen
-        if chosen:FindFirstChild("ObjectModel") then
-            part = chosen.ObjectModel:FindFirstChild("Books") or chosen.ObjectModel:FindFirstChild("Door1") or chosen
-        end
+    if #found > 0 then
+        local chosen = found[math.random(1, #found)]
+        local part = chosen:FindFirstChild("Books", true) or chosen:FindFirstChild("Door1", true) or chosen:FindFirstChild("Seat", true) or chosen
         return part, chosen.Name
     end
     return nil
 end
 
-local function CheckHandAction()
-    pcall(function()
+local function CheckHand()
+    local ok, res = pcall(function()
         local label = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer.ActionLabel
         return string.lower(label.Text), label.Parent
     end)
-    return nil, nil
+    return ok and res or nil
 end
 
-local function InteractOnce(words)
-    local gui = Players.LocalPlayer.PlayerGui:FindFirstChild("_interactUI")
-    if gui and gui.InteractIndicator.Visible then
-        local txt = string.lower(gui.InteractIndicator.TextLabel.Text)
-        for _, w in ipairs(words) do
-            if txt:find(w) then
-                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                task.wait(0.05)
-                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-                return true
-            end
-        end
-    end
-    return false
-end
-
----------------------------------------------------------
--- LOOP PRINCIPAL
----------------------------------------------------------
 function _G.Intelligence.Start()
     if isFarmingIntel then return end
     isFarmingIntel = true
@@ -159,48 +58,52 @@ function _G.Intelligence.Start()
             local hum = char and char:FindFirstChild("Humanoid")
             if not hum then task.wait(1) continue end
 
-            local handAct, handBtn = CheckHandAction()
-            local temLivro = handAct and (handAct:find("use") or handAct:find("read"))
+            local handText = CheckHand()
+            local temLivro = handText and (handText:find("use") or handText:find("read") or handText:find("ler"))
 
+            -- 1. PEGAR LIVRO
             if not temLivro and not hum.Sit then
-                local bookPart, bName = GetRandomObject(BookObjects)
+                local bookPart, name = GetTarget(BookObjects)
                 if bookPart then
                     local door = CarregarModulo("smart_door.lua")
                     if door then door.IrPara(bookPart) end
                     
-                    -- MEXE APENAS NA CÂMERA
-                    PosicionarCameraSegura(bookPart)
+                    local cam = CarregarModulo("smart_cam")
+                    if cam then cam.OlharPara(bookPart) end
                     
-                    if InteractOnce({"take", "read", "book", "pegar", "ler"}) then
-                        task.wait(2)
-                    end
-                    workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-                    hum.AutoRotate = true
+                    -- Interage
+                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                    task.wait(0.1); VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                    
+                    task.wait(2) -- Tempo para o item ir para a mão
+                    if cam then cam.Reset() end
                 end
+
+            -- 2. SENTAR E LER
             elseif temLivro then
                 if not hum.Sit then
-                    local seatPart, sName = GetRandomObject(SeatObjects)
+                    local seatPart, name = GetTarget(SeatObjects)
                     if seatPart then
                         local door = CarregarModulo("smart_door.lua")
                         if door then door.IrPara(seatPart) end
                         
-                        -- MEXE APENAS NA CÂMERA
-                        PosicionarCameraSegura(seatPart)
+                        local cam = CarregarModulo("smart_cam")
+                        if cam then cam.OlharPara(seatPart) end
                         
-                        if InteractOnce({"sit", "use", "sentar", "usar"}) then
-                            task.wait(2)
-                        end
-                        workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-                        hum.AutoRotate = true
+                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                        task.wait(0.1); VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                        
+                        task.wait(2)
+                        if cam then cam.Reset() end
                     end
                 else
-                    -- LENDO
+                    -- JÁ ESTÁ SENTADO LENDO
                     task.wait(15)
-                    hum.Jump = true
+                    hum.Jump = true -- Levanta para reciclar o farm
                     task.wait(1)
                 end
             end
-            task.wait(0.5)
+            task.wait(1)
         end
     end)
 end
@@ -208,10 +111,8 @@ end
 function _G.Intelligence.Stop()
     isFarmingIntel = false
     currentMacroId = currentMacroId + 1
-    pcall(function() 
-        workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-        Players.LocalPlayer.Character.Humanoid.AutoRotate = true
-    end)
+    local cam = CarregarModulo("smart_cam")
+    if cam then cam.Reset() end
 end
 
 return _G.Intelligence
