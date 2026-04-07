@@ -48,14 +48,13 @@ local function ClicarBotaoEquipado()
     pcall(function()
         local label = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer.ActionLabel
         if label and label.Parent.Visible then
-            local pos = label.AbsolutePosition
-            local size = label.AbsoluteSize
-            local insetTopLeft = GuiService:GetGuiInset()
-            local x = pos.X + (size.X / 2) + insetTopLeft.X
-            local y = pos.Y + (size.Y / 2) + insetTopLeft.Y
-            VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
+            local center = label.AbsolutePosition + (label.AbsoluteSize / 2)
+            local inset = GuiService:GetGuiInset()
+            local finalX = center.X + inset.X
+            local finalY = center.Y + inset.Y
+            VirtualInputManager:SendMouseButtonEvent(finalX, finalY, 0, true, game, 1)
             task.wait(0.1)
-            VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
+            VirtualInputManager:SendMouseButtonEvent(finalX, finalY, 0, false, game, 1)
         end
     end)
 end
@@ -119,6 +118,7 @@ function _G.Intelligence.Start()
                 hum.Jump = true 
                 task.wait(1)
             elseif isHolding and hum.Sit then
+                task.wait(0.3)
                 ClicarBotaoEquipado()
                 task.wait(1)
             elseif isHolding and not hum.Sit then
