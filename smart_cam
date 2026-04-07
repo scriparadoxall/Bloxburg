@@ -6,7 +6,7 @@ function SmartCam.OlharPara(alvoPart)
     local Camera = workspace.CurrentCamera
     local char = Players.LocalPlayer.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
+    if not hrp then return false end -- Retorna falso se não achar o boneco
 
     local alvoPos = alvoPart:IsA("Model") and (alvoPart.PrimaryPart and alvoPart.PrimaryPart.Position or alvoPart:GetPivot().Position) or alvoPart.Position
     local headPos = char:FindFirstChild("Head") and char.Head.Position or (hrp.Position + Vector3.new(0, 1.5, 0))
@@ -42,7 +42,9 @@ function SmartCam.OlharPara(alvoPart)
     })
     
     tween:Play()
-    tween.Completed:Wait() -- << TRAVA O SCRIPT ATÉ A CÂMERA PARAR 100%
+    tween.Completed:Wait() -- Trava o script até a câmera parar 100%
+    
+    return true -- AQUI: Ele fala "Terminei!" para o script principal
 end
 
 function SmartCam.Reset()
@@ -51,6 +53,7 @@ function SmartCam.Reset()
     if Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
         Camera.CameraSubject = Players.LocalPlayer.Character.Humanoid
     end
+    return true
 end
 
 return SmartCam
