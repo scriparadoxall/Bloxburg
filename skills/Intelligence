@@ -5,6 +5,7 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local isFarmingIntel = false
 local currentMacroId = 0
 
+-- Tabela corrigida (sem 'Table')
 local BookObjects = {"Bookcase", "Dresser", "Books", "Book"}
 local SeatObjects = {"Sofa", "Toilet", "Chair", "Stool", "Bench"}
 
@@ -41,12 +42,13 @@ local function CheckHand()
     return ok and res or ""
 end
 
+-- Função de interação corrigida (Segura o botão por mais tempo)
 local function Espera_ApertaE_Reseta(validWords)
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
     local timeout = tick() + 2.5 
     local achouUI = false
     
-    -- 1. ESPERA a UI aparecer enquanto a câmera foca
+    -- 1. ESPERA a UI aparecer
     while tick() < timeout do
         local interactUI = playerGui:FindFirstChild("_interactUI")
         if interactUI then
@@ -68,22 +70,22 @@ local function Espera_ApertaE_Reseta(validWords)
         task.wait(0.1)
     end
 
-    -- 2. APERTA E
+    -- 2. APERTA E (Segurando a tecla para o jogo registrar)
     if achouUI then
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-        task.wait(0.1)
+        task.wait(0.6) -- Segura o E
         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-        task.wait(0.3) -- Pausa rápida pro jogo processar o clique
+        task.wait(0.5) -- Pausa pro jogo terminar a animação de pegar
     else
-        -- Fallback de segurança se o texto demorar a carregar
+        -- Fallback de segurança se a UI falhar
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-        task.wait(0.1)
+        task.wait(0.6) -- Segura o E
         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
     end
 
     -- 3. RESETA CÂMERA
     pcall(function()
-        local cam = CarregarModulo("smart_cam") -- ou "smart_cam.lua" dependendo do seu repositório
+        local cam = CarregarModulo("smart_cam") -- Lembre de colocar .lua se precisar
         if cam and cam.Reset then cam.Reset() end
     end)
     
@@ -109,20 +111,18 @@ function _G.Intelligence.Start()
             if not temLivro and not hum.Sit then
                 local bookPart = GetTarget(BookObjects)
                 if bookPart then
-                    -- Anda até o local
                     local door = CarregarModulo("smart_door.lua")
                     if door then door.IrPara(bookPart) end
                     
-                    -- Foca a câmera e ESPERA a resposta dela
-                    local cam = CarregarModulo("smart_cam") -- Verifique se precisa do ".lua"
+                    local cam = CarregarModulo("smart_cam")
                     if cam then 
+                        -- Espera o sinal verde da câmera
                         local cameraPronta = cam.OlharPara(bookPart)
                         
-                        -- Só continua quando a câmera gritar "Terminei!" (return true)
                         if cameraPronta then
-                            task.wait(0.2) -- Uma micro pausa por garantia antes de interagir
+                            task.wait(0.2)
                             Espera_ApertaE_Reseta({"take", "read", "book", "ler", "pegar"})
-                            task.wait(2.5) -- Espera animação de equipar
+                            task.wait(2.5) 
                         end
                     end
                 end
@@ -137,6 +137,7 @@ function _G.Intelligence.Start()
                         
                         local cam = CarregarModulo("smart_cam")
                         if cam then 
+                            -- Espera o sinal verde da câmera
                             local cameraPronta = cam.OlharPara(seatPart)
                             
                             if cameraPronta then
@@ -147,7 +148,6 @@ function _G.Intelligence.Start()
                         end
                     end
                 else
-                    -- Já está sentado lendo
                     task.wait(15)
                     hum.Jump = true 
                     task.wait(1)
