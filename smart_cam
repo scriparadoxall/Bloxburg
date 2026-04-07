@@ -13,17 +13,17 @@ function SmartCam.OlharPara(alvoPart)
 
     local direcaoCorpo = CFrame.new(hrp.Position, Vector3.new(alvoPos.X, hrp.Position.Y, alvoPos.Z))
     local offsets = {
-        Vector3.new(0, 2.5, 4),   -- Atrás
-        Vector3.new(3, 2, 2),     -- Direita
-        Vector3.new(-3, 2, 2),    -- Esquerda
-        Vector3.new(0, 4, 1)      -- Cima
+        Vector3.new(0, 3, 4),   
+        Vector3.new(3, 2, 2),   
+        Vector3.new(-3, 2, 2),  
+        Vector3.new(0, 5, 0)    
     }
 
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
     rayParams.FilterDescendantsInstances = {char, alvoPart.Parent, workspace:FindFirstChild("Plots")}
 
-    local melhorPos = headPos + Vector3.new(0, 2.5, 3)
+    local melhorPos = headPos + Vector3.new(0, 3, 2)
 
     for _, offset in ipairs(offsets) do
         local posTeste = (direcaoCorpo * CFrame.new(offset)).Position
@@ -35,25 +35,18 @@ function SmartCam.OlharPara(alvoPart)
     end
 
     Camera.CameraType = Enum.CameraType.Scriptable
-    
-    local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-    local tween = TweenService:Create(Camera, tweenInfo, {
+    local tween = TweenService:Create(Camera, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
         CFrame = CFrame.lookAt(melhorPos, alvoPos)
     })
-    
     tween:Play()
-    tween.Completed:Wait() -- Espera o movimento terminar
+    tween.Completed:Wait() 
 end
 
 function SmartCam.Reset()
     local Camera = workspace.CurrentCamera
-    local char = Players.LocalPlayer.Character
-    local hum = char and char:FindFirstChild("Humanoid")
-    
-    -- Força a câmera voltar ao normal e grudar no boneco
     Camera.CameraType = Enum.CameraType.Custom
-    if hum then
-        Camera.CameraSubject = hum
+    if Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
+        Camera.CameraSubject = Players.LocalPlayer.Character.Humanoid
     end
 end
 
