@@ -13,17 +13,17 @@ function SmartCam.OlharPara(alvoPart)
 
     local direcaoCorpo = CFrame.new(hrp.Position, Vector3.new(alvoPos.X, hrp.Position.Y, alvoPos.Z))
     local offsets = {
-        Vector3.new(0, 3, 4),   
-        Vector3.new(3, 2, 2),   
-        Vector3.new(-3, 2, 2),  
-        Vector3.new(0, 5, 0)    
+        Vector3.new(0, 2.5, 4),   
+        Vector3.new(3, 2, 2),     
+        Vector3.new(-3, 2, 2),    
+        Vector3.new(0, 4, 1)      
     }
 
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
     rayParams.FilterDescendantsInstances = {char, alvoPart.Parent, workspace:FindFirstChild("Plots")}
 
-    local melhorPos = headPos + Vector3.new(0, 3, 2)
+    local melhorPos = headPos + Vector3.new(0, 2.5, 3)
 
     for _, offset in ipairs(offsets) do
         local posTeste = (direcaoCorpo * CFrame.new(offset)).Position
@@ -35,11 +35,14 @@ function SmartCam.OlharPara(alvoPart)
     end
 
     Camera.CameraType = Enum.CameraType.Scriptable
-    local tween = TweenService:Create(Camera, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+    
+    local tweenInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+    local tween = TweenService:Create(Camera, tweenInfo, {
         CFrame = CFrame.lookAt(melhorPos, alvoPos)
     })
+    
     tween:Play()
-    tween.Completed:Wait() 
+    tween.Completed:Wait() -- << O SEGREDO: Só libera o script quando a câmera PARAR.
 end
 
 function SmartCam.Reset()
