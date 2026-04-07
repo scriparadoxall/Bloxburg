@@ -8,52 +8,58 @@ function SmartCam.OlharPara(alvoPart)
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
 
-    local headPos = char:FindFirstChild("Head") and char.Head.Position or (hrp.Position + Vector3.new(0, 1.5, 0))
+    -- Posição do alvo
     local alvoPos = alvoPart:IsA("Model") and (alvoPart.PrimaryPart and alvoPart.PrimaryPart.Position or alvoPart:GetPivot().Position) or alvoPart.Position
+    local headPos = char:FindFirstChild("Head") and char.Head.Position or (hrp.Position + Vector3.new(0, 1.5, 0))
 
-    -- Calcula a direção baseada em onde o boneco já está parado
+    -- Cálculo de posição segura (anti-parede)
     local direcaoCorpo = CFrame.new(hrp.Position, Vector3.new(alvoPos.X, hrp.Position.Y, alvoPos.Z))
-
-    -- Lista de posições para a câmera testar (Atrás, Lados, Cima)
     local offsets = {
-        Vector3.new(0, 3, 5),   -- Atrás e cima
-        Vector3.new(4, 2, 3),   -- Lado Direito
-        Vector3.new(-4, 2, 3),  -- Lado Esquerdo
-        Vector3.new(0, 6, 0.5)  -- Visão de cima (anti-parede total)
+        Vector3.new(0, 3, 4),   -- Atrás
+        Vector3.new(3, 2, 2),   -- Lado
+        Vector3.new(0, 5, 0)    -- Cima
     }
 
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
     rayParams.FilterDescendantsInstances = {char, alvoPart.Parent, workspace:FindFirstChild("Plots")}
 
-    local melhorPos = headPos + Vector3.new(0, 3, 2) -- Posição de reserva
+    local melhorPos = headPos + Vector3.new(0, 3, 2)
 
     for _, offset in ipairs(offsets) do
         local posTeste = (direcaoCorpo * CFrame.new(offset)).Position
-        local direcaoRay = posTeste - headPos
-        local resultado = workspace:Raycast(headPos, direcaoRay, rayParams)
-
+        local resultado = workspace:Raycast(headPos, posTeste - headPos, rayParams)
         if not resultado then
-            melhorPos = posTeste -- Caminho livre!
-            break
-        elseif (resultado.Position - headPos).Magnitude > 3 then
-            melhorPos = resultado.Position - (direcaoRay.Unit * 0.5) -- Perto da parede, mas com espaço
+            melhorPos = posTeste
             break
         end
     end
 
-    -- Move a câmera suavemente (SEM TRAVAR O BONECO)
+    -- EXECUÇÃO DO FOCO
     Camera.CameraType = Enum.CameraType.Scriptable
-    local tween = TweenService:Create(Camera, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+    
+    local tweenInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+    local tween = TweenService:Create(Camera, tweenInfo, {
         CFrame = CFrame.lookAt(melhorPos, alvoPos)
     })
+    
     tween:Play()
-    -- Removido o 'Wait()' para não congelar o script
+    
+    -- Espera o tempo exato do movimento e já libera a câmera
+    task.delay(0.5, function()
+        SmartCam.Reset()
+    end)
 end
 
 function SmartCam.Reset()
-    -- Devolve a câmera ao normal para o jogador
-    workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+    local Camera = workspace.CurrentCamera
+    if Camera.CameraType ~= Enum.CameraType.Custom then
+        Camera.CameraType = Enum.CameraType.Custom
+        -- Garante que o AutoRotate do boneco volte ao normal
+        if Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
+            Players.LocalPlayer.Character.Humanoid.AutoRotate = true
+        end
+    end
 end
 
 return SmartCam
