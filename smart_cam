@@ -5,12 +5,8 @@ local Players = game:GetService("Players")
 function SmartCam.OlharPara(alvoPart)
     local Camera = workspace.CurrentCamera
     local char = Players.LocalPlayer.Character
-    local hum = char and char:FindFirstChild("Humanoid")
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if not hrp or not hum then return end
-
-    -- Trava a rotação do boneco para ele não girar como robô
-    hum.AutoRotate = false 
+    if not hrp then return end
 
     local headPos = char:FindFirstChild("Head") and char.Head.Position or (hrp.Position + Vector3.new(0, 1.5, 0))
     local alvoPos = alvoPart:IsA("Model") and (alvoPart.PrimaryPart and alvoPart.PrimaryPart.Position or alvoPart:GetPivot().Position) or alvoPart.Position
@@ -41,25 +37,23 @@ function SmartCam.OlharPara(alvoPart)
             melhorPos = posTeste -- Caminho livre!
             break
         elseif (resultado.Position - headPos).Magnitude > 3 then
-            melhorPos = resultado.Position - (direcaoRay.Unit * 0.5) -- Perto da parede, mas visível
+            melhorPos = resultado.Position - (direcaoRay.Unit * 0.5) -- Perto da parede, mas com espaço
             break
         end
     end
 
-    -- Move a câmera suavemente
+    -- Move a câmera suavemente (SEM TRAVAR O BONECO)
     Camera.CameraType = Enum.CameraType.Scriptable
     local tween = TweenService:Create(Camera, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
         CFrame = CFrame.lookAt(melhorPos, alvoPos)
     })
     tween:Play()
-    tween.Completed:Wait()
+    -- Removido o 'Wait()' para não congelar o script
 end
 
 function SmartCam.Reset()
+    -- Devolve a câmera ao normal para o jogador
     workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-    if Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
-        Players.LocalPlayer.Character.Humanoid.AutoRotate = true
-    end
 end
 
 return SmartCam
