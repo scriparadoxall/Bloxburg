@@ -6,7 +6,7 @@ local isFarmingIntel = false
 local currentMacroId = 0
 
 ---------------------------------------------------------
--- GERENCIADOR DE MÓDULOS (Cache para não lagar)
+-- GERENCIADOR DE MÓDULOS (Cache)
 ---------------------------------------------------------
 local ModulosCarregados = {}
 
@@ -26,10 +26,10 @@ local function CarregarModulo(nomeExato)
 end
 
 ---------------------------------------------------------
--- LISTAS DE ALVOS (Camas removidas)
+-- LISTAS DE ALVOS (Sem camas)
 ---------------------------------------------------------
-local BookObjects = {"Simplicity Bookcase", "Large Simplicity Bookcase", "Simplicity Dresser", "Simplicity Table", "Ordered Plain Books", "Book"}
-local SeatObjects = {"Simple Sofa", "MightyFlush Toilet", "Chair", "Sofa", "Stool", "Bench"}
+local BookObjects = {"Bookcase", "Dresser", "Table", "Books", "Book"}
+local SeatObjects = {"Sofa", "Toilet", "Chair", "Stool", "Bench"}
 
 ---------------------------------------------------------
 -- FUNÇÕES DE DEBUG VISUAL
@@ -62,9 +62,8 @@ local function DestacarAlvo(alvo)
 end
 
 ---------------------------------------------------------
--- FUNÇÕES AUXILIARES, CÂMERA E UI
+-- FUNÇÕES AUXILIARES
 ---------------------------------------------------------
-
 local function GetPlayerHouse()
     local plots = workspace:FindFirstChild("Plots")
     if not plots then return nil end
@@ -86,38 +85,60 @@ local function GetPlayerHouse()
     return nil
 end
 
-local function GetRandomObject(objectList)
+local function GetTarget(list)
     local house = GetPlayerHouse()
-    if not house then return nil, "Casa não encontrada" end
+    local folder = house and house:FindFirstChild("Objects")
+    if not folder then return nil end
+    
+    local found = {}
+    for _, obj in ipairs(folder:GetChildren()) do
+        for _, name in ipairs(list) do
+            if string.find(string.lower(obj.Name), string.lower(name)) then table.insert(found, obj) break end
+        end
+    end
+    if #found > 0 then
+        local chosen = found[math.random(1, #found)]
+        local part = chosen:FindFirstChild("Books", true) or chosen:FindFirstChild("Door1", true) or chosen
+        return part, chosen.Name
+    end
+    return nil
+end
 
-    local objectsFolder = house:FindFirstChild("Objects")
-    if not objectsFolder then return nil, "Pasta 'Objects' vazia" end
+local function CheckHand()
+    local ok, res = pcall(function()
+        local label = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer.ActionLabel
+        return string.lower(label.Text), label.Parent
+    end)
+    return ok and res or "", res
+end
 
-    local availableObjects = {}
-    for _, obj in ipairs(objectsFolder:GetChildren()) do
-        for _, objName in ipairs(objectList) do
-            if string.find(string.lower(obj.Name), string.lower(objName)) then
-                table.insert(availableObjects, obj)
-                break
+-- Espera ativamente o botão "E" aparecer e pressiona
+local function InteractSafe(validWords)
+    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+    local timeout = tick() + 2.5 -- Tenta achar o botão por até 2.5 segundos
+    
+    while tick() < timeout do
+        local interactUI = playerGui:FindFirstChild("_interactUI")
+        if interactUI then
+            local indicator = interactUI:FindFirstChild("InteractIndicator")
+            if indicator and indicator.Visible then
+                local textLabel = indicator:FindFirstChild("TextLabel")
+                if textLabel then
+                    local txt = string.lower(textLabel.Text)
+                    for _, word in ipairs(validWords) do
+                        if string.find(txt, word) then
+                            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                            task.wait(0.1)
+                            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                            return true
+                        end
+                    end
+                end
             end
         end
+        task.wait(0.1) 
     end
-
-    if #availableObjects > 0 then
-        local randomIndex = math.random(1, #availableObjects)
-        local chosenObj = availableObjects[randomIndex]
-        
-        local targetPart = chosenObj
-        if chosenObj:FindFirstChild("ObjectModel") then
-            if chosenObj.ObjectModel:FindFirstChild("Books") then targetPart = chosenObj.ObjectModel.Books
-            elseif chosenObj.ObjectModel:FindFirstChild("Door1") then targetPart = chosenObj.ObjectModel.Door1 end
-        elseif chosenObj:FindFirstChild("ItemHolder") then
-            targetPart = chosenObj.ItemHolder
-        end
-        
-        return targetPart, "Sucesso", chosenObj.Name
-    end
-    return nil, "Móvel não achado"
+    return false
 end
 
 local function SafeClick(element)
@@ -141,54 +162,6 @@ local function SafeClick(element)
     return success
 end
 
-local function InteractOnce(validWords)
-    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-    local interactUI = playerGui:FindFirstChild("_interactUI")
-
-    if interactUI then
-        local indicator = interactUI:FindFirstChild("InteractIndicator")
-        if indicator and indicator.Visible then
-            local textLabel = indicator:FindFirstChild("TextLabel")
-            if textLabel then
-                local currentText = string.lower(textLabel.Text)
-                for _, word in ipairs(validWords) do
-                    if string.find(currentText, string.lower(word)) then
-                        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                        task.wait(0.05)
-                        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-                        return true
-                    end
-                end
-            end
-        end
-    end
-    return false
-end
-
-local function CheckHandAction()
-    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-    local hudGui = playerGui:FindFirstChild("HUDGui")
-    if hudGui then
-        local hotbar = hudGui:FindFirstChild("Hotbar")
-        if hotbar then
-            local layout = hotbar:FindFirstChild("LayoutContainer")
-            if layout then
-                local leftBtn = layout:FindFirstChild("LeftButtonContainer")
-                if leftBtn then
-                    local equippedContainer = leftBtn:FindFirstChild("EquippedContainer")
-                    if equippedContainer and equippedContainer.Visible then
-                        local actionLabel = equippedContainer:FindFirstChild("ActionLabel")
-                        if actionLabel and actionLabel.Text ~= "" then
-                            return string.lower(actionLabel.Text), equippedContainer
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return nil, nil
-end
-
 ---------------------------------------------------------
 -- LOOP PRINCIPAL
 ---------------------------------------------------------
@@ -203,82 +176,65 @@ function _G.Intelligence.Start()
     task.spawn(function()
         while isFarmingIntel and currentMacroId == myId do
             local char = Players.LocalPlayer.Character
-            if not char or not char:FindFirstChild("Humanoid") then task.wait(2) continue end
-            local hum = char.Humanoid
+            local hum = char and char:FindFirstChild("Humanoid")
+            if not hum then task.wait(1) continue end
 
-            -- PASSO 1: VERIFICA O QUE TEM NA MÃO
-            local handAction, handButton = CheckHandAction()
-            local temLivroNaMao = false
+            local handText, handButton = CheckHand()
+            local temLivro = string.find(handText, "use") or string.find(handText, "read") or string.find(handText, "ler")
 
-            if handAction and (string.find(handAction, "use") or string.find(handAction, "read") or string.find(handAction, "usar") or string.find(handAction, "ler")) then
-                temLivroNaMao = true
-            end
-
-            -- PASSO 2: PEGAR O LIVRO
-            if not temLivroNaMao and not hum.Sit then
-                local randomBook, erroBook, bookName = GetRandomObject(BookObjects)
-                
-                if randomBook then
-                    DestacarAlvo(randomBook)
-                    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Buscando livro: " .. tostring(bookName), Color3.fromRGB(200, 200, 200)) end
+            -- 1. PEGAR LIVRO
+            if not temLivro and not hum.Sit then
+                local bookPart, bookName = GetTarget(BookObjects)
+                if bookPart then
+                    DestacarAlvo(bookPart)
+                    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Buscando: " .. tostring(bookName), Color3.fromRGB(200, 200, 200)) end
                     
-                    local doorSystem = CarregarModulo("smart_door.lua")
-                    if doorSystem and doorSystem.IrPara then 
-                        doorSystem.IrPara(randomBook) 
-                    end
+                    local door = CarregarModulo("smart_door.lua")
+                    if door then door.IrPara(bookPart) end
                     
-                    local camSystem = CarregarModulo("smart_cam")
-                    if camSystem and camSystem.OlharPara then
-                        camSystem.OlharPara(randomBook)
-                    end
+                    local cam = CarregarModulo("smart_cam")
+                    if cam then cam.OlharPara(bookPart) end
                     
-                    InteractOnce({"take", "read", "book", "ler", "pegar"})
+                    -- Tenta interagir de forma segura esperando o botão
+                    InteractSafe({"take", "read", "book", "ler", "pegar"})
                     
-                    -- DEVOLVE A CÂMERA IMEDIATAMENTE
-                    if camSystem and camSystem.Reset then camSystem.Reset() end
+                    -- Restaura a câmera imediatamente após a interação/falha
+                    if cam then cam.Reset() end
                     
-                    -- Espera o livro ir para a mão
-                    task.wait(2)
+                    task.wait(2) -- Tempo para a animação do livro na mão
                 else
-                    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Sem estantes. Pausando.", Color3.fromRGB(255, 100, 100)) end
+                    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Nenhum livro/estante achado.", Color3.fromRGB(255, 100, 100)) end
                     task.wait(5)
                 end
-
-            -- PASSO 3: ESTÁ COM O LIVRO NA MÃO E EM PÉ
-            elseif temLivroNaMao then
+                
+            -- 2. SENTAR E LER
+            elseif temLivro then
                 if not hum.Sit then
-                    local randomSeat, erroSeat, seatName = GetRandomObject(SeatObjects)
-                    
-                    if randomSeat then
-                        DestacarAlvo(randomSeat)
+                    local seatPart, seatName = GetTarget(SeatObjects)
+                    if seatPart then
+                        DestacarAlvo(seatPart)
                         if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Indo sentar em: " .. tostring(seatName), Color3.fromRGB(200, 200, 200)) end
                         
-                        local doorSystem = CarregarModulo("smart_door.lua")
-                        if doorSystem and doorSystem.IrPara then 
-                            doorSystem.IrPara(randomSeat) 
-                        end
+                        local door = CarregarModulo("smart_door.lua")
+                        if door then door.IrPara(seatPart) end
                         
-                        local camSystem = CarregarModulo("smart_cam")
-                        if camSystem and camSystem.OlharPara then
-                            camSystem.OlharPara(randomSeat)
-                        end
+                        local cam = CarregarModulo("smart_cam")
+                        if cam then cam.OlharPara(seatPart) end
                         
-                        InteractOnce({"sit", "use", "sentar", "usar"})
+                        InteractSafe({"sit", "use", "sentar", "usar"})
                         
-                        -- DEVOLVE A CÂMERA IMEDIATAMENTE
-                        if camSystem and camSystem.Reset then camSystem.Reset() end
+                        -- Restaura a câmera imediatamente
+                        if cam then cam.Reset() end
                         
-                        task.wait(2)
+                        task.wait(2) 
                     else
-                        if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Lendo de pé!", Color3.fromRGB(255, 200, 100)) end
+                        if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Sem assentos. Lendo em pé!", Color3.fromRGB(255, 200, 100)) end
                         if handButton then SafeClick(handButton) end
                         task.wait(15)
                     end
-                
-                -- PASSO 4: LENDO (Já sentado ou lendo em pé animado)
                 else
+                    -- LENDO (Já sentado)
                     if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Lendo tranquilo...", Color3.fromRGB(100, 255, 100)) end
-                    
                     for i=1, 15 do
                         if not isFarmingIntel or currentMacroId ~= myId or hum.Sit == false then break end
                         task.wait(1)
@@ -286,10 +242,9 @@ function _G.Intelligence.Start()
                     
                     hum.Jump = true 
                     task.wait(1)
-                    LimparMarcacoes() 
+                    LimparMarcacoes()
                 end
             end
-            
             task.wait(0.5)
         end
     end)
@@ -300,16 +255,12 @@ function _G.Intelligence.Stop()
     currentMacroId = currentMacroId + 1
     LimparMarcacoes()
     
-    local doorSystem = CarregarModulo("smart_door.lua")
-    if doorSystem and type(doorSystem.Cancelar) == "function" then
-        doorSystem.Cancelar()
-    end
-    
-    local camSystem = CarregarModulo("smart_cam")
-    if camSystem and camSystem.Reset then
-        camSystem.Reset()
-    end
+    local door = CarregarModulo("smart_door.lua")
+    if door and door.Cancelar then door.Cancelar() end
 
+    local cam = CarregarModulo("smart_cam")
+    if cam then cam.Reset() end
+    
     if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Farm de Inteligência parado.", Color3.fromRGB(255, 100, 100)) end
 end
 
