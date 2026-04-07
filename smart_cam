@@ -1,98 +1,65 @@
--- =========================================================================
--- FUNÇÃO DE CÂMERA INTELIGENTE (Anti-Parede)
--- Coloque isso acima do seu MoveToStation
--- =========================================================================
-local function PosicionarCameraSegura(alvoPart)
+local SmartCam = {}
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+
+function SmartCam.OlharPara(alvoPart)
     local Camera = workspace.CurrentCamera
     local char = Players.LocalPlayer.Character
+    local hum = char and char:FindFirstChild("Humanoid")
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
+    if not hrp or not hum then return end
 
-    -- Pega a posição da cabeça (ou calcula uma altura aproximada)
+    -- Trava a rotação do boneco para ele não girar como robô
+    hum.AutoRotate = false 
+
     local headPos = char:FindFirstChild("Head") and char.Head.Position or (hrp.Position + Vector3.new(0, 1.5, 0))
     local alvoPos = alvoPart:IsA("Model") and (alvoPart.PrimaryPart and alvoPart.PrimaryPart.Position or alvoPart:GetPivot().Position) or alvoPart.Position
 
-    -- Calcula para que lado o alvo está em relação ao jogador
-    local direcaoAlvo = CFrame.lookAt(hrp.Position, Vector3.new(alvoPos.X, hrp.Position.Y, alvoPos.Z))
+    -- Calcula a direção baseada em onde o boneco já está parado
+    local direcaoCorpo = CFrame.new(hrp.Position, Vector3.new(alvoPos.X, hrp.Position.Y, alvoPos.Z))
 
-    -- Lista de posições para testar (Tentando achar um ângulo sem parede)
-    -- 1º: Atrás e cima | 2º: Lado Direito | 3º: Lado Esquerdo | 4º: Bem de Cima
+    -- Lista de posições para a câmera testar (Atrás, Lados, Cima)
     local offsets = {
-        Vector3.new(0, 3, 5),
-        Vector3.new(4, 3, 3),
-        Vector3.new(-4, 3, 3),
-        Vector3.new(0, 6, 1)
+        Vector3.new(0, 3, 5),   -- Atrás e cima
+        Vector3.new(4, 2, 3),   -- Lado Direito
+        Vector3.new(-4, 2, 3),  -- Lado Esquerdo
+        Vector3.new(0, 6, 0.5)  -- Visão de cima (anti-parede total)
     }
 
-    -- Configura o "raio" para ignorar o próprio boneco e o móvel que vamos interagir
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
-    rayParams.FilterDescendantsInstances = {char, alvoPart.Parent}
+    rayParams.FilterDescendantsInstances = {char, alvoPart.Parent, workspace:FindFirstChild("Plots")}
 
-    local melhorPos = headPos + Vector3.new(0, 2, 2) -- Posição de emergência
+    local melhorPos = headPos + Vector3.new(0, 3, 2) -- Posição de reserva
 
     for _, offset in ipairs(offsets) do
-        -- Calcula onde a câmera ficaria nesse offset específico
-        local posTeste = (direcaoAlvo * CFrame.new(offset)).Position
+        local posTeste = (direcaoCorpo * CFrame.new(offset)).Position
         local direcaoRay = posTeste - headPos
-
-        -- Lança o raio da cabeça até a posição da câmera
         local resultado = workspace:Raycast(headPos, direcaoRay, rayParams)
 
         if not resultado then
-            -- Caminho livre! Nenhuma parede atrapalhando.
-            melhorPos = posTeste
+            melhorPos = posTeste -- Caminho livre!
             break
-        elseif (resultado.Position - headPos).Magnitude > 2.5 then
-            -- Bateu numa parede, mas tem espaço suficiente para a câmera não bugar
-            melhorPos = resultado.Position - (direcaoRay.Unit * 0.5) -- Recua meio metro da parede
+        elseif (resultado.Position - headPos).Magnitude > 3 then
+            melhorPos = resultado.Position - (direcaoRay.Unit * 0.5) -- Perto da parede, mas visível
             break
         end
     end
 
-    -- Aplica a câmera focando no objeto
+    -- Move a câmera suavemente
     Camera.CameraType = Enum.CameraType.Scriptable
-    Camera.CFrame = CFrame.lookAt(melhorPos, alvoPos)
+    local tween = TweenService:Create(Camera, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        CFrame = CFrame.lookAt(melhorPos, alvoPos)
+    })
+    tween:Play()
+    tween.Completed:Wait()
 end
 
--- =========================================================================
--- SUA FUNÇÃO ATUALIZADA (Mexendo APENAS na Câmera)
--- =========================================================================
-local function MoveToStation(stationType)
-    -- 1. SEARCH: Procura o objeto e a peça de interação exata
-    local searcher = CarregarModulo("smartSearch")
-    if not searcher then return false end
-
-    local obj, part, dist = searcher.Find(stationType)
-    if not obj or not part then 
-        Log("ERRO: Nenhuma '" .. stationType .. "' acessível!", Color3.fromRGB(255, 100, 100))
-        return false 
+function SmartCam.Reset()
+    workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+    if Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChild("Humanoid") then
+        Players.LocalPlayer.Character.Humanoid.AutoRotate = true
     end
-
-    -- 2. DOOR: Anda exatamente até a peça encontrada
-    local doorSystem = CarregarModulo("smart_door.lua")
-    if not doorSystem then return false end
-
-    local chegou_no_destino = doorSystem.IrPara(part)
-
-    -- 3. CHEGOU? Arruma a câmera (sem girar o corpo) e aperta E!
-    if chegou_no_destino then
-        
-        -- CAM: Usa a nova função que desvia de paredes
-        PosicionarCameraSegura(part)
-
-        -- FOOD: Clica!
-        task.wait(0.2)
-        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-        task.wait(0.05)
-        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-        
-        -- Devolve a câmera pro jogador depois de interagir
-        task.wait(0.5)
-        workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-        
-        return true
-    end
-
-    return false
 end
+
+return SmartCam
