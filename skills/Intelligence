@@ -11,17 +11,13 @@ local SeatObjects = {"Sofa", "Toilet", "Chair", "Stool", "Bench"}
 local function CarregarModulo(nomeExato)
     local url = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/" .. nomeExato
     local s, r = pcall(function() return loadstring(game:HttpGet(url))() end)
-    if not s then print("[Erro] Falha ao carregar módulo:", nomeExato) end
     return s and r or nil
 end
 
 local function GetTarget(list)
     local p = workspace.Plots:FindFirstChild("Plot_" .. Players.LocalPlayer.Name)
     local folder = p and p:FindFirstChild("House") and p.House:FindFirstChild("Objects")
-    if not folder then 
-        print("[Alvo] Pasta de objetos não encontrada!")
-        return nil 
-    end
+    if not folder then return nil end
     
     local found = {}
     for _, obj in ipairs(folder:GetChildren()) do
@@ -33,10 +29,8 @@ local function GetTarget(list)
     if #found > 0 then
         local chosen = found[math.random(1, #found)]
         local part = chosen:FindFirstChild("Books", true) or chosen:FindFirstChild("Seat", true) or chosen:FindFirstChild("Door1", true) or chosen
-        print("[Alvo] Encontrou alvo:", chosen.Name)
         return part, chosen.Name
     end
-    print("[Alvo] Nenhum objeto válido encontrado na lista.")
     return nil
 end
 
@@ -50,12 +44,17 @@ local function CheckHand()
 end
 
 local function Espera_ApertaE_Reseta(validWords)
-    print("[Interação] Iniciando espera da UI...")
+    pcall(function()
+        local cam = CarregarModulo("smart_cam")
+        if cam and cam.Reset then cam.Reset() end
+    end)
+    
+    task.wait(0.5) 
+
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
     local timeout = tick() + 2.5 
     local achouUI = false
     
-    -- 1. ESPERA a UI aparecer
     while tick() < timeout do
         local interactUI = playerGui:FindFirstChild("_interactUI")
         if interactUI then
@@ -66,7 +65,6 @@ local function Espera_ApertaE_Reseta(validWords)
                     local txt = string.lower(textLabel.Text)
                     for _, word in ipairs(validWords) do
                         if string.find(txt, word) then
-                            print("[Interação] UI ENCONTRADA! Texto lido:", txt)
                             achouUI = true
                             break
                         end
@@ -78,34 +76,18 @@ local function Espera_ApertaE_Reseta(validWords)
         task.wait(0.1)
     end
 
-    -- 2. APERTA O "E" APENAS SE ACHOU A UI
-    if not achouUI then
-        print("[Interação] AVISO: UI não foi lida a tempo. Cancelando aperto do E para evitar bugs.")
-    else
-        print("[Interação] ---> VIRTUAL INPUT: Pressionando 'E' (Toque Rápido)")
+    if achouUI then
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-        task.wait(0.05) -- Mesmo tempo usado no seu SmartDoor
+        task.wait(0.2)
         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-        task.wait(0.5) -- Pausa pro jogo terminar a animação de pegar antes de tirar a câmera
+        task.wait(0.5)
     end
-
-    -- 3. RESETA CÂMERA
-    print("[Interação] Chamando Reset da Câmera...")
-    pcall(function()
-        local cam = CarregarModulo("smart_cam")
-        if cam and cam.Reset then cam.Reset() end
-    end)
     
-    print("[Interação] Fim do ciclo de interação.")
     return achouUI
 end
 
 function _G.Intelligence.Start()
-    if isFarmingIntel then 
-        print("[Macro] Macro já está rodando.")
-        return 
-    end
-    print("[Macro] INICIANDO MACRO DE INTELIGÊNCIA!")
+    if isFarmingIntel then return end
     isFarmingIntel = true
     currentMacroId = currentMacroId + 1
     local myId = currentMacroId
@@ -119,62 +101,39 @@ function _G.Intelligence.Start()
             local handText = CheckHand()
             local temLivro = (handText ~= "") and (handText:find("use") or handText:find("read") or handText:find("ler"))
 
-            -- PASSO 1: PEGAR LIVRO
             if not temLivro and not hum.Sit then
-                print("--- [PASSO 1] Personagem não tem livro. Indo buscar. ---")
                 local bookPart = GetTarget(BookObjects)
                 if bookPart then
                     local door = CarregarModulo("smart_door.lua")
-                    if door then 
-                        print("[Macro] Andando até a estante...")
-                        door.IrPara(bookPart) 
-                    end
+                    if door then door.IrPara(bookPart) end
                     
                     local cam = CarregarModulo("smart_cam")
                     if cam then 
-                        print("[Macro] Pedindo pra câmera focar na estante...")
                         local cameraPronta = cam.OlharPara(bookPart)
-                        
                         if cameraPronta then
-                            task.wait(1.5) -- CORRIGIDO: Tempo aumentado de 0.2 para 1.5
-                            print("[Macro] Câmera focada e aguardou. Chamando aperto do E...")
                             Espera_ApertaE_Reseta({"take", "read", "book", "ler", "pegar"})
                             task.wait(2.5) 
-                        else
-                            print("[Macro] ERRO: Câmera não retornou true.")
                         end
                     end
                 end
-
-            -- PASSO 2: SENTAR E LER
             elseif temLivro then
                 if not hum.Sit then
-                    print("--- [PASSO 2] Personagem com livro. Indo sentar. ---")
                     local seatPart = GetTarget(SeatObjects)
                     if seatPart then
                         local door = CarregarModulo("smart_door.lua")
-                        if door then 
-                            print("[Macro] Andando até o assento...")
-                            door.IrPara(seatPart) 
-                        end
+                        if door then door.IrPara(seatPart) end
                         
                         local cam = CarregarModulo("smart_cam")
                         if cam then 
-                            print("[Macro] Pedindo pra câmera focar no assento...")
                             local cameraPronta = cam.OlharPara(seatPart)
-                            
                             if cameraPronta then
-                                task.wait(1.5) -- CORRIGIDO: Tempo aumentado de 0.2 para 1.5
-                                print("[Macro] Câmera focada e aguardou. Chamando aperto do E...")
                                 Espera_ApertaE_Reseta({"sit", "use", "sentar", "usar"})
                                 task.wait(2)
                             end
                         end
                     end
                 else
-                    print("[Macro] Lendo... Aguardando 15 segundos.")
                     task.wait(15)
-                    print("[Macro] Pulando para reiniciar o ciclo.")
                     hum.Jump = true 
                     task.wait(1)
                 end
@@ -185,7 +144,6 @@ function _G.Intelligence.Start()
 end
 
 function _G.Intelligence.Stop()
-    print("[Macro] PARANDO MACRO DE INTELIGÊNCIA.")
     isFarmingIntel = false
     currentMacroId = currentMacroId + 1
     pcall(function()
