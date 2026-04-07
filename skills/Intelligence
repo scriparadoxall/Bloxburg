@@ -78,16 +78,16 @@ local function Espera_ApertaE_Reseta(validWords)
         task.wait(0.1)
     end
 
+    -- 2. APERTA O "E" APENAS SE ACHOU A UI
     if not achouUI then
-        print("[Interação] AVISO: UI não foi lida a tempo.")
+        print("[Interação] AVISO: UI não foi lida a tempo. Cancelando aperto do E para evitar bugs.")
+    else
+        print("[Interação] ---> VIRTUAL INPUT: Pressionando 'E' (Toque Rápido)")
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+        task.wait(0.05) -- Mesmo tempo usado no seu SmartDoor
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+        task.wait(0.5) -- Pausa pro jogo terminar a animação de pegar antes de tirar a câmera
     end
-
-    -- 2. APERTA E (IGUAL AO SMARTDOOR - TOQUE RÁPIDO DE 0.05s)
-    print("[Interação] ---> VIRTUAL INPUT: Pressionando 'E' (Toque Rápido)")
-    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-    task.wait(0.05) -- Mesmo tempo usado no seu SmartDoor
-    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-    task.wait(0.5) -- Pausa pro jogo terminar a animação de pegar antes de tirar a câmera
 
     -- 3. RESETA CÂMERA
     print("[Interação] Chamando Reset da Câmera...")
@@ -136,8 +136,8 @@ function _G.Intelligence.Start()
                         local cameraPronta = cam.OlharPara(bookPart)
                         
                         if cameraPronta then
-                            task.wait(0.2)
-                            print("[Macro] Câmera focada. Chamando aperto do E...")
+                            task.wait(1.5) -- CORRIGIDO: Tempo aumentado de 0.2 para 1.5
+                            print("[Macro] Câmera focada e aguardou. Chamando aperto do E...")
                             Espera_ApertaE_Reseta({"take", "read", "book", "ler", "pegar"})
                             task.wait(2.5) 
                         else
@@ -164,8 +164,8 @@ function _G.Intelligence.Start()
                             local cameraPronta = cam.OlharPara(seatPart)
                             
                             if cameraPronta then
-                                task.wait(0.2)
-                                print("[Macro] Câmera focada. Chamando aperto do E...")
+                                task.wait(1.5) -- CORRIGIDO: Tempo aumentado de 0.2 para 1.5
+                                print("[Macro] Câmera focada e aguardou. Chamando aperto do E...")
                                 Espera_ApertaE_Reseta({"sit", "use", "sentar", "usar"})
                                 task.wait(2)
                             end
