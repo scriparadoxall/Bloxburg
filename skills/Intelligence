@@ -42,14 +42,14 @@ local function CheckHand()
 end
 
 -- ==========================================================
--- NOVA LÓGICA SOLICITADA: Espera -> Reseta Câmera -> Aperta E
+-- LÓGICA CORRIGIDA: Espera UI -> Reseta Câmera -> SÓ ENTÃO Aperta E
 -- ==========================================================
 local function Espera_Reseta_ApertaE(validWords)
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
     local timeout = tick() + 2.5 
     local achouUI = false
     
-    -- 4. ESPERA (Aguarda o botão aparecer na interface)
+    -- 1. ESPERA: Aguarda o botão azul aparecer na interface (enquanto a câmera ainda foca)
     while tick() < timeout do
         local interactUI = playerGui:FindFirstChild("_interactUI")
         if interactUI then
@@ -71,15 +71,17 @@ local function Espera_Reseta_ApertaE(validWords)
         task.wait(0.1)
     end
 
-    -- 5. RESETA CÂMERA (Libera sua tela)
+    -- 2. RESETA CÂMERA: Devolve a visão para o personagem (Crucial para o clique funcionar)
     pcall(function()
         local cam = CarregarModulo("smart_cam")
         if cam and cam.Reset then cam.Reset() end
         workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
         workspace.CurrentCamera.CameraSubject = Players.LocalPlayer.Character.Humanoid
     end)
+    
+    task.wait(0.1) -- Curta pausa para o motor do jogo atualizar o foco no boneco
 
-    -- 6. APERTA E (A última opção)
+    -- 3. APERTA E: A última ação de todas
     if achouUI then
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
         task.wait(0.1)
@@ -103,27 +105,27 @@ function _G.Intelligence.Start()
             if not hum then task.wait(1) continue end
 
             local handText = CheckHand()
-            local temLivro = handText:find("use") or handText:find("read") or handText:find("ler")
+            local temLivro = (handText ~= "") and (handText:find("use") or handText:find("read") or handText:find("ler"))
 
             -- PASSO 1: PEGAR LIVRO
             if not temLivro and not hum.Sit then
                 local bookPart = GetTarget(BookObjects)
                 if bookPart then
-                    -- 1. ANDAR
+                    -- Andar
                     local door = CarregarModulo("smart_door.lua")
                     if door then door.IrPara(bookPart) end
                     
-                    -- 2. FOCAR E TRAVAR CÂMERA
+                    -- Focar Câmera (Trava o script até o tween acabar)
                     local cam = CarregarModulo("smart_cam")
                     if cam then cam.OlharPara(bookPart) end
                     
-                    -- 3. PAUSA
+                    -- Pausa para renderização
                     task.wait(0.3) 
                     
-                    -- 4, 5 e 6: ESPERA UI, RESETA CÂMERA E APERTA E
+                    -- Lógica de Interação (Espera -> Reseta -> Aperta E)
                     Espera_Reseta_ApertaE({"take", "read", "book", "ler", "pegar"})
                     
-                    task.wait(2) 
+                    task.wait(2.5) -- Espera animação de equipar
                 end
 
             -- PASSO 2: SENTAR E LER
@@ -131,24 +133,24 @@ function _G.Intelligence.Start()
                 if not hum.Sit then
                     local seatPart = GetTarget(SeatObjects)
                     if seatPart then
-                        -- 1. ANDAR
+                        -- Andar
                         local door = CarregarModulo("smart_door.lua")
                         if door then door.IrPara(seatPart) end
                         
-                        -- 2. FOCAR E TRAVAR CÂMERA
+                        -- Focar Câmera
                         local cam = CarregarModulo("smart_cam")
                         if cam then cam.OlharPara(seatPart) end
                         
-                        -- 3. PAUSA
+                        -- Pausa
                         task.wait(0.3) 
                         
-                        -- 4, 5 e 6: ESPERA UI, RESETA CÂMERA E APERTA E
+                        -- Lógica de Interação
                         Espera_Reseta_ApertaE({"sit", "use", "sentar", "usar"})
                         
                         task.wait(2)
                     end
                 else
-                    -- LENDO (Já sentado)
+                    -- Lendo
                     task.wait(15)
                     hum.Jump = true 
                     task.wait(1)
@@ -166,7 +168,6 @@ function _G.Intelligence.Stop()
         local cam = CarregarModulo("smart_cam")
         if cam and cam.Reset then cam.Reset() end
         workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-        workspace.CurrentCamera.CameraSubject = Players.LocalPlayer.Character.Humanoid
     end)
 end
 
