@@ -2,6 +2,7 @@ _G.Intelligence = {}
 
 local Players = game:GetService("Players")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
 local isFarmingIntel = false
 local currentMacroId = 0
 
@@ -43,18 +44,31 @@ local function CheckHand()
     return ok and res or ""
 end
 
+local function ClicarBotaoEquipado()
+    pcall(function()
+        local button = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer.EquippedButton
+        if button and button.Visible then
+            local pos = button.AbsolutePosition
+            local size = button.AbsoluteSize
+            local inset = GuiService:GetGuiInset()
+            local x = pos.X + (size.X / 2)
+            local y = pos.Y + (size.Y / 2) + inset.Y
+            VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
+            task.wait(0.1)
+            VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
+        end
+    end)
+end
+
 local function Espera_ApertaE_Reseta(validWords)
     pcall(function()
         local cam = CarregarModulo("smart_cam")
         if cam and cam.Reset then cam.Reset() end
     end)
-    
     task.wait(0.5) 
-
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
     local timeout = tick() + 2.5 
     local achouUI = false
-    
     while tick() < timeout do
         local interactUI = playerGui:FindFirstChild("_interactUI")
         if interactUI then
@@ -75,14 +89,12 @@ local function Espera_ApertaE_Reseta(validWords)
         if achouUI then break end
         task.wait(0.1)
     end
-
     if achouUI then
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
         task.wait(0.2)
         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
         task.wait(0.5)
     end
-    
     return achouUI
 end
 
@@ -99,43 +111,41 @@ function _G.Intelligence.Start()
             if not hum then task.wait(1) continue end
 
             local handText = CheckHand()
-            local temLivro = (handText ~= "") and (handText:find("use") or handText:find("read") or handText:find("ler"))
+            local isHolding = string.find(handText, "use") or string.find(handText, "read") or string.find(handText, "ler") or string.find(handText, "equip")
+            local isReading = string.find(handText, "stop") or string.find(handText, "parar")
 
-            if not temLivro and not hum.Sit then
+            if isReading and hum.Sit then
+                task.wait(15)
+                hum.Jump = true 
+                task.wait(1)
+            elseif isHolding and hum.Sit then
+                ClicarBotaoEquipado()
+                task.wait(1)
+            elseif isHolding and not hum.Sit then
+                local seatPart = GetTarget(SeatObjects)
+                if seatPart then
+                    local door = CarregarModulo("smart_door.lua")
+                    if door then door.IrPara(seatPart) end
+                    local cam = CarregarModulo("smart_cam")
+                    if cam then 
+                        local cameraPronta = cam.OlharPara(seatPart)
+                        if cameraPronta then
+                            Espera_ApertaE_Reseta({"sit", "use", "sentar", "usar"})
+                        end
+                    end
+                end
+            elseif not isHolding and not isReading and not hum.Sit then
                 local bookPart = GetTarget(BookObjects)
                 if bookPart then
                     local door = CarregarModulo("smart_door.lua")
                     if door then door.IrPara(bookPart) end
-                    
                     local cam = CarregarModulo("smart_cam")
                     if cam then 
                         local cameraPronta = cam.OlharPara(bookPart)
                         if cameraPronta then
                             Espera_ApertaE_Reseta({"take", "read", "book", "ler", "pegar"})
-                            task.wait(2.5) 
                         end
                     end
-                end
-            elseif temLivro then
-                if not hum.Sit then
-                    local seatPart = GetTarget(SeatObjects)
-                    if seatPart then
-                        local door = CarregarModulo("smart_door.lua")
-                        if door then door.IrPara(seatPart) end
-                        
-                        local cam = CarregarModulo("smart_cam")
-                        if cam then 
-                            local cameraPronta = cam.OlharPara(seatPart)
-                            if cameraPronta then
-                                Espera_ApertaE_Reseta({"sit", "use", "sentar", "usar"})
-                                task.wait(2)
-                            end
-                        end
-                    end
-                else
-                    task.wait(15)
-                    hum.Jump = true 
-                    task.wait(1)
                 end
             end
             task.wait(0.5)
