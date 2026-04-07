@@ -79,19 +79,15 @@ local function Espera_ApertaE_Reseta(validWords)
     end
 
     if not achouUI then
-        print("[Interação] AVISO: UI não foi lida a tempo. Tentando Fallback (apertar às cegas).")
+        print("[Interação] AVISO: UI não foi lida a tempo.")
     end
 
-    -- 2. APERTA E 
-    print("[Interação] ---> VIRTUAL INPUT: Pressionando 'E' (Down)")
+    -- 2. APERTA E (IGUAL AO SMARTDOOR - TOQUE RÁPIDO DE 0.05s)
+    print("[Interação] ---> VIRTUAL INPUT: Pressionando 'E' (Toque Rápido)")
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-    
-    task.wait(0.6) 
-    
-    print("[Interação] ---> VIRTUAL INPUT: Soltando 'E' (Up)")
+    task.wait(0.05) -- Mesmo tempo usado no seu SmartDoor
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-    
-    task.wait(0.5) 
+    task.wait(0.5) -- Pausa pro jogo terminar a animação de pegar antes de tirar a câmera
 
     -- 3. RESETA CÂMERA
     print("[Interação] Chamando Reset da Câmera...")
