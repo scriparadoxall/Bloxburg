@@ -5,7 +5,6 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local isFarmingIntel = false
 local currentMacroId = 0
 
--- 1. "Table" removido da lista
 local BookObjects = {"Bookcase", "Dresser", "Books", "Book"}
 local SeatObjects = {"Sofa", "Toilet", "Chair", "Stool", "Bench"}
 
@@ -42,15 +41,12 @@ local function CheckHand()
     return ok and res or ""
 end
 
--- ==========================================================
--- LÓGICA CORRIGIDA: Espera UI -> APERTA E -> Reseta Câmera
--- ==========================================================
-local function Espera_Reseta_ApertaE(validWords)
+local function Espera_ApertaE_Reseta(validWords)
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
     local timeout = tick() + 2.5 
     local achouUI = false
     
-    -- 1. ESPERA: Aguarda o botão aparecer na interface
+    -- 1. ESPERA a UI aparecer enquanto a câmera foca
     while tick() < timeout do
         local interactUI = playerGui:FindFirstChild("_interactUI")
         if interactUI then
@@ -72,25 +68,23 @@ local function Espera_Reseta_ApertaE(validWords)
         task.wait(0.1)
     end
 
-    -- 2. APERTA E: Faz isso ENQUANTO ainda está olhando para o objeto
+    -- 2. APERTA E
     if achouUI then
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
         task.wait(0.1)
         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-        task.wait(0.3) -- Pequena pausa para o jogo registrar que você pegou/sentou
+        task.wait(0.3) -- Pausa rápida pro jogo processar o clique
     else
-        -- Fallback: Se não achou a UI pelo texto, tenta apertar E mesmo assim por garantia
+        -- Fallback de segurança se o texto demorar a carregar
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
         task.wait(0.1)
         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
     end
 
-    -- 3. RESETA CÂMERA: Agora que já interagiu, pode voltar a câmera ao normal
+    -- 3. RESETA CÂMERA
     pcall(function()
-        local cam = CarregarModulo("smart_cam")
+        local cam = CarregarModulo("smart_cam") -- ou "smart_cam.lua" dependendo do seu repositório
         if cam and cam.Reset then cam.Reset() end
-        workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-        workspace.CurrentCamera.CameraSubject = Players.LocalPlayer.Character.Humanoid
     end)
     
     return achouUI
@@ -115,17 +109,22 @@ function _G.Intelligence.Start()
             if not temLivro and not hum.Sit then
                 local bookPart = GetTarget(BookObjects)
                 if bookPart then
+                    -- Anda até o local
                     local door = CarregarModulo("smart_door.lua")
                     if door then door.IrPara(bookPart) end
                     
-                    local cam = CarregarModulo("smart_cam")
-                    if cam then cam.OlharPara(bookPart) end
-                    
-                    task.wait(0.3) 
-                    
-                    Espera_Reseta_ApertaE({"take", "read", "book", "ler", "pegar"})
-                    
-                    task.wait(2.5) 
+                    -- Foca a câmera e ESPERA a resposta dela
+                    local cam = CarregarModulo("smart_cam") -- Verifique se precisa do ".lua"
+                    if cam then 
+                        local cameraPronta = cam.OlharPara(bookPart)
+                        
+                        -- Só continua quando a câmera gritar "Terminei!" (return true)
+                        if cameraPronta then
+                            task.wait(0.2) -- Uma micro pausa por garantia antes de interagir
+                            Espera_ApertaE_Reseta({"take", "read", "book", "ler", "pegar"})
+                            task.wait(2.5) -- Espera animação de equipar
+                        end
+                    end
                 end
 
             -- PASSO 2: SENTAR E LER
@@ -137,15 +136,18 @@ function _G.Intelligence.Start()
                         if door then door.IrPara(seatPart) end
                         
                         local cam = CarregarModulo("smart_cam")
-                        if cam then cam.OlharPara(seatPart) end
-                        
-                        task.wait(0.3) 
-                        
-                        Espera_Reseta_ApertaE({"sit", "use", "sentar", "usar"})
-                        
-                        task.wait(2)
+                        if cam then 
+                            local cameraPronta = cam.OlharPara(seatPart)
+                            
+                            if cameraPronta then
+                                task.wait(0.2)
+                                Espera_ApertaE_Reseta({"sit", "use", "sentar", "usar"})
+                                task.wait(2)
+                            end
+                        end
                     end
                 else
+                    -- Já está sentado lendo
                     task.wait(15)
                     hum.Jump = true 
                     task.wait(1)
@@ -162,7 +164,6 @@ function _G.Intelligence.Stop()
     pcall(function()
         local cam = CarregarModulo("smart_cam")
         if cam and cam.Reset then cam.Reset() end
-        workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
     end)
 end
 
