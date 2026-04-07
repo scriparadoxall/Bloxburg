@@ -42,7 +42,7 @@ function SmartCam.OlharPara(alvoPart)
     })
     
     tween:Play()
-    tween.Completed:Wait() -- Espera o movimento terminar antes de deixar o bot apertar 'E'
+    tween.Completed:Wait() -- Espera o movimento terminar
 end
 
 function SmartCam.Reset()
