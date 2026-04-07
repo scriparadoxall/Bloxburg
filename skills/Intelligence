@@ -32,54 +32,17 @@ local BookObjects = {"Bookcase", "Dresser", "Table", "Books", "Book"}
 local SeatObjects = {"Sofa", "Toilet", "Chair", "Stool", "Bench"}
 
 ---------------------------------------------------------
--- FUNÇÕES DE DEBUG VISUAL
----------------------------------------------------------
-local function LimparMarcacoes()
-    for _, obj in pairs(workspace:GetDescendants()) do
-        if obj.Name == "IntelDebugHighlight" then 
-            obj:Destroy() 
-        end
-    end
-end
-
-local function DestacarAlvo(alvo)
-    LimparMarcacoes()
-    if not _G.MostrarObjetosIntel or not alvo then return end
-
-    local modelToHighlight = alvo
-    if not modelToHighlight:IsA("Model") and not modelToHighlight:IsA("BasePart") then
-        modelToHighlight = alvo:FindFirstAncestorWhichIsA("Model") or alvo.Parent
-    end
-
-    if modelToHighlight and (modelToHighlight:IsA("Model") or modelToHighlight:IsA("BasePart")) then
-        local hl = Instance.new("Highlight")
-        hl.Name = "IntelDebugHighlight"
-        hl.FillColor = Color3.fromRGB(0, 255, 100) -- VERDE
-        hl.FillTransparency = 0.5
-        hl.OutlineColor = Color3.fromRGB(0, 200, 50)
-        hl.Parent = modelToHighlight
-    end
-end
-
----------------------------------------------------------
 -- FUNÇÕES AUXILIARES
 ---------------------------------------------------------
 local function GetPlayerHouse()
     local plots = workspace:FindFirstChild("Plots")
-    if not plots then return nil end
-
-    local myPlotName = "Plot_" .. Players.LocalPlayer.Name
-    local myPlot = plots:FindFirstChild(myPlotName)
+    local myPlot = plots and plots:FindFirstChild("Plot_" .. Players.LocalPlayer.Name)
     if myPlot then return myPlot:FindFirstChild("House") end
-
+    
     for _, plot in ipairs(plots:GetChildren()) do
         local owner = plot:FindFirstChild("Owner")
-        if owner then
-            if typeof(owner.Value) == "Instance" and owner.Value == Players.LocalPlayer then
-                return plot:FindFirstChild("House")
-            elseif type(owner.Value) == "string" and owner.Value == Players.LocalPlayer.Name then
-                return plot:FindFirstChild("House")
-            end
+        if owner and (owner.Value == Players.LocalPlayer or owner.Value == Players.LocalPlayer.Name) then
+            return plot:FindFirstChild("House")
         end
     end
     return nil
@@ -96,26 +59,39 @@ local function GetTarget(list)
             if string.find(string.lower(obj.Name), string.lower(name)) then table.insert(found, obj) break end
         end
     end
+    
     if #found > 0 then
         local chosen = found[math.random(1, #found)]
-        local part = chosen:FindFirstChild("Books", true) or chosen:FindFirstChild("Door1", true) or chosen
+        local part = chosen
+        
+        -- Tenta achar a peça exata de interação (Livros ou Assento)
+        if chosen:FindFirstChild("ObjectModel") then
+            part = chosen.ObjectModel:FindFirstChild("Books") or chosen.ObjectModel:FindFirstChild("Seat") or chosen.ObjectModel:FindFirstChild("Door1") or chosen
+        elseif chosen:FindFirstChild("ItemHolder") then
+            part = chosen.ItemHolder:FindFirstChildWhichIsA("BasePart") or chosen
+        end
         return part, chosen.Name
     end
     return nil
 end
 
+-- Verifica se o livro está equipado na mão
 local function CheckHand()
     local ok, res = pcall(function()
-        local label = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer.ActionLabel
-        return string.lower(label.Text), label.Parent
+        local eqContainer = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer
+        if eqContainer and eqContainer.Visible then
+            local label = eqContainer:FindFirstChild("ActionLabel")
+            if label then return string.lower(label.Text) end
+        end
+        return ""
     end)
-    return ok and res or "", res
+    return ok and res or ""
 end
 
--- Espera ativamente o botão "E" aparecer e pressiona
+-- Espera o botão azul aparecer e aperta "E" (que o seu executor converte)
 local function InteractSafe(validWords)
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-    local timeout = tick() + 2.5 -- Tenta achar o botão por até 2.5 segundos
+    local timeout = tick() + 2.5 
     
     while tick() < timeout do
         local interactUI = playerGui:FindFirstChild("_interactUI")
@@ -127,6 +103,7 @@ local function InteractSafe(validWords)
                     local txt = string.lower(textLabel.Text)
                     for _, word in ipairs(validWords) do
                         if string.find(txt, word) then
+                            -- Pressiona a tecla E
                             VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
                             task.wait(0.1)
                             VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
@@ -136,34 +113,22 @@ local function InteractSafe(validWords)
                 end
             end
         end
-        task.wait(0.1) 
+        task.wait(0.1)
     end
     return false
 end
 
-local function SafeClick(element)
-    if not element then return false end
-    local success = false
+local function ForcarResetCamera()
     pcall(function()
-        if getconnections then
-            if element.MouseButton1Click then 
-                for _, conn in pairs(getconnections(element.MouseButton1Click)) do conn:Fire(); success = true end 
-            end
-            if not success and element.Activated then 
-                for _, conn in pairs(getconnections(element.Activated)) do conn:Fire(); success = true end 
-            end
-            if not success and element.MouseButton1Down then
-                 for _, conn in pairs(getconnections(element.MouseButton1Down)) do conn:Fire() end 
-                 for _, conn in pairs(getconnections(element.MouseButton1Up)) do conn:Fire() end 
-                 success = true
-            end
-        end
+        local cam = CarregarModulo("smart_cam")
+        if cam and cam.Reset then cam.Reset() end
+        workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+        workspace.CurrentCamera.CameraSubject = Players.LocalPlayer.Character.Humanoid
     end)
-    return success
 end
 
 ---------------------------------------------------------
--- LOOP PRINCIPAL
+-- LOOP PRINCIPAL (Lógica Sequencial)
 ---------------------------------------------------------
 function _G.Intelligence.Start()
     if isFarmingIntel then return end
@@ -179,72 +144,54 @@ function _G.Intelligence.Start()
             local hum = char and char:FindFirstChild("Humanoid")
             if not hum then task.wait(1) continue end
 
-            local handText, handButton = CheckHand()
-            local temLivro = string.find(handText, "use") or string.find(handText, "read") or string.find(handText, "ler")
+            local handText = CheckHand()
+            local temLivro = (handText ~= "") and (string.find(handText, "use") or string.find(handText, "read") or string.find(handText, "ler"))
 
-            -- 1. PEGAR LIVRO
-            if not temLivro and not hum.Sit then
+            -- 1. PEGAR LIVRO (Prioridade máxima)
+            if not temLivro then
+                if hum.Sit then hum.Jump = true; task.wait(1) end
+
                 local bookPart, bookName = GetTarget(BookObjects)
                 if bookPart then
-                    DestacarAlvo(bookPart)
-                    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Buscando: " .. tostring(bookName), Color3.fromRGB(200, 200, 200)) end
-                    
                     local door = CarregarModulo("smart_door.lua")
                     if door then door.IrPara(bookPart) end
                     
                     local cam = CarregarModulo("smart_cam")
                     if cam then cam.OlharPara(bookPart) end
                     
-                    -- Tenta interagir de forma segura esperando o botão
                     InteractSafe({"take", "read", "book", "ler", "pegar"})
+                    ForcarResetCamera()
                     
-                    -- Restaura a câmera imediatamente após a interação/falha
-                    if cam then cam.Reset() end
-                    
-                    task.wait(2) -- Tempo para a animação do livro na mão
-                else
-                    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Nenhum livro/estante achado.", Color3.fromRGB(255, 100, 100)) end
-                    task.wait(5)
+                    task.wait(2.5) -- Tempo para equipar
                 end
                 
-            -- 2. SENTAR E LER
-            elseif temLivro then
-                if not hum.Sit then
-                    local seatPart, seatName = GetTarget(SeatObjects)
-                    if seatPart then
-                        DestacarAlvo(seatPart)
-                        if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Indo sentar em: " .. tostring(seatName), Color3.fromRGB(200, 200, 200)) end
-                        
-                        local door = CarregarModulo("smart_door.lua")
-                        if door then door.IrPara(seatPart) end
-                        
-                        local cam = CarregarModulo("smart_cam")
-                        if cam then cam.OlharPara(seatPart) end
-                        
-                        InteractSafe({"sit", "use", "sentar", "usar"})
-                        
-                        -- Restaura a câmera imediatamente
-                        if cam then cam.Reset() end
-                        
-                        task.wait(2) 
-                    else
-                        if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Sem assentos. Lendo em pé!", Color3.fromRGB(255, 200, 100)) end
-                        if handButton then SafeClick(handButton) end
-                        task.wait(15)
-                    end
-                else
-                    -- LENDO (Já sentado)
-                    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Lendo tranquilo...", Color3.fromRGB(100, 255, 100)) end
-                    for i=1, 15 do
-                        if not isFarmingIntel or currentMacroId ~= myId or hum.Sit == false then break end
-                        task.wait(1)
-                    end
+            -- 2. SENTAR (Só se já tiver o livro)
+            elseif temLivro and not hum.Sit then
+                local seatPart, seatName = GetTarget(SeatObjects)
+                if seatPart then
+                    local door = CarregarModulo("smart_door.lua")
+                    if door then door.IrPara(seatPart) end
                     
-                    hum.Jump = true 
-                    task.wait(1)
-                    LimparMarcacoes()
+                    local cam = CarregarModulo("smart_cam")
+                    if cam then cam.OlharPara(seatPart) end
+                    
+                    InteractSafe({"sit", "use", "sentar", "usar"})
+                    ForcarResetCamera()
+                    
+                    task.wait(2) 
                 end
+                
+            -- 3. LER (Sentado com livro)
+            elseif temLivro and hum.Sit then
+                if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Lendo...", Color3.fromRGB(100, 255, 100)) end
+                for i=1, 15 do
+                    if not isFarmingIntel or currentMacroId ~= myId or hum.Sit == false then break end
+                    task.wait(1)
+                end
+                hum.Jump = true 
+                task.wait(1)
             end
+            
             task.wait(0.5)
         end
     end)
@@ -253,15 +200,9 @@ end
 function _G.Intelligence.Stop()
     isFarmingIntel = false
     currentMacroId = currentMacroId + 1
-    LimparMarcacoes()
-    
+    ForcarResetCamera()
     local door = CarregarModulo("smart_door.lua")
     if door and door.Cancelar then door.Cancelar() end
-
-    local cam = CarregarModulo("smart_cam")
-    if cam then cam.Reset() end
-    
-    if _G.BloxburgChef_AddLog then _G.BloxburgChef_AddLog("Farm de Inteligência parado.", Color3.fromRGB(255, 100, 100)) end
 end
 
 return _G.Intelligence
