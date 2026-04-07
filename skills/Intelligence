@@ -46,15 +46,16 @@ end
 
 local function ClicarBotaoEquipado()
     pcall(function()
-        local label = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer.ActionLabel
-        if label and label.Parent.Visible then
-            local center = label.AbsolutePosition + (label.AbsoluteSize / 2)
+        local container = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer
+        if container and container.Visible then
+            local pos = container.AbsolutePosition
+            local size = container.AbsoluteSize
             local inset = GuiService:GetGuiInset()
-            local finalX = center.X + inset.X
-            local finalY = center.Y + inset.Y
-            VirtualInputManager:SendMouseButtonEvent(finalX, finalY, 0, true, game, 1)
+            local x = pos.X + (size.X / 2) + inset.X
+            local y = pos.Y + (size.Y / 2) + inset.Y
+            VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
             task.wait(0.1)
-            VirtualInputManager:SendMouseButtonEvent(finalX, finalY, 0, false, game, 1)
+            VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
         end
     end)
 end
