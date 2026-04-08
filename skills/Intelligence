@@ -37,12 +37,9 @@ end
 
 local function CheckHand()
     local ok, res = pcall(function()
-        local container = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer:FindFirstChild("EquippedContainer")
-        if container and container.Visible then
-            local label = container:FindFirstChild("ActionLabel")
-            if label then
-                return string.lower(label.Text)
-            end
+        local label = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer.ActionLabel
+        if label and label.Parent.Visible then
+            return string.lower(label.Text)
         end
         return ""
     end)
@@ -52,7 +49,7 @@ end
 local function ClicarBotaoEquipado()
     pcall(function()
         local container = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer
-        if container then
+        if container and container.Visible then
             local pos = container.AbsolutePosition
             local size = container.AbsoluteSize
             local inset = GuiService:GetGuiInset()
