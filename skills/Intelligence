@@ -37,8 +37,14 @@ end
 
 local function CheckHand()
     local ok, res = pcall(function()
-        local label = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer.ActionLabel
-        return string.lower(label.Text)
+        local container = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer:FindFirstChild("EquippedContainer")
+        if container and container.Visible then
+            local label = container:FindFirstChild("ActionLabel")
+            if label then
+                return string.lower(label.Text)
+            end
+        end
+        return ""
     end)
     return ok and res or ""
 end
