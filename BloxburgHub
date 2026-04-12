@@ -73,12 +73,11 @@ local function LoadMainHub()
     HideButton.BackgroundTransparency = 1; HideButton.Position = UDim2.new(1, -40, 0, 0); HideButton.Size = UDim2.new(0, 40, 0, 40)
     HideButton.Font = Enum.Font.GothamBold; HideButton.Text = "-"; HideButton.TextColor3 = Color3.fromRGB(255, 255, 255); HideButton.TextSize = 24
 
-    -- AQUI FOI ALTERADO: Agora é um ImageButton usando a sua logo
     local OpenButton = Instance.new("ImageButton", ScriparadoxallUI)
     OpenButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     OpenButton.Position = UDim2.new(0, 20, 0.5, -25)
     OpenButton.Size = UDim2.new(0, 50, 0, 50)
-    OpenButton.Image = "rbxassetid://93903389594586" -- O ID da imagem do link que você mandou
+    OpenButton.Image = "rbxthumb://type=Asset&id=93903389594586&w=150&h=150"
     OpenButton.Visible = false
     Instance.new("UICorner", OpenButton).CornerRadius = UDim.new(1, 0)
 
