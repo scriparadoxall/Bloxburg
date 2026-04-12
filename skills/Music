@@ -5,7 +5,7 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local isFarmingMusic = false
 local currentMacroId = 0
 
--- Lista apenas com os instrumentos
+-- Lista com os instrumentos
 local InstrumentObjects = {
     "Toy Maracas", 
     "Toy Tambourine", 
@@ -15,6 +15,9 @@ local InstrumentObjects = {
     "Acoustic Guitar"
 }
 
+-- Lista de assentos permitidos (Sofa incluso)
+local SeatObjects = {"Sofa", "Chair", "Stool", "Bench"}
+
 -- Função para carregar módulos do seu repositório
 local function CarregarModulo(nomeExato)
     local url = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/" .. nomeExato
@@ -22,6 +25,7 @@ local function CarregarModulo(nomeExato)
     return s and r or nil
 end
 
+-- Função para buscar objetos na Plot
 local function GetTarget(list)
     local p = workspace.Plots:FindFirstChild("Plot_" .. Players.LocalPlayer.Name)
     local folder = p and p:FindFirstChild("House") and p.House:FindFirstChild("Objects")
@@ -38,7 +42,6 @@ local function GetTarget(list)
     end
 
     if #found > 0 then
-        -- Escolhe um aleatório se houver mais de 1
         local chosen = found[math.random(1, #found)]
         local part = chosen:FindFirstChild("Seat", true) or chosen:FindFirstChild("Door1", true) or chosen
         return part, chosen.Name
@@ -46,9 +49,11 @@ local function GetTarget(list)
     return nil
 end
 
+-- Verifica o que está escrito no botão de ação da mão do personagem
 local function CheckHand()
     local ok, res = pcall(function()
         local label = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer.ActionLabel
+        -- Se o texto sumir ou a UI ficar invisível, retorna vazio
         if label and label.Parent.Visible then
             return string.lower(label.Text)
         end
@@ -57,6 +62,7 @@ local function CheckHand()
     return ok and res or ""
 end
 
+-- Espera a interface de interação (Apertar E) aparecer, aperta E e reseta a câmera
 local function Espera_ApertaE_Reseta(validWords)
     pcall(function()
         local cam = CarregarModulo("smart_cam")
@@ -89,7 +95,6 @@ local function Espera_ApertaE_Reseta(validWords)
     end
     
     if achouUI then
-        -- Aperta E
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
         task.wait(0.2)
         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
@@ -111,33 +116,61 @@ function _G.Music.Start()
             if not hum then task.wait(1) continue end
 
             local handText = CheckHand()
-            local isHolding = string.find(handText, "use") or string.find(handText, "play") or string.find(handText, "tocar") or string.find(handText, "equip")
+            
+            -- Verifica se tem as palavras-chave na mão ("play", "tocar" indicam que pegou o objeto)
+            local isHolding = string.find(handText, "play") or string.find(handText, "tocar") or string.find(handText, "use") or string.find(handText, "usar")
             local isPlaying = string.find(handText, "stop") or string.find(handText, "parar")
 
-            if isPlaying then
-                -- Já está tocando o instrumento, apenas aguarda
-                task.wait(5)
+            -- LÓGICA DE AÇÕES
+            if isPlaying and hum.Sit then
+                -- 4. Já está sentado e tocando: Fica farmando por um tempo e levanta pra resetar o ciclo
+                task.wait(15)
+                hum.Jump = true 
+                task.wait(1)
                 
-            elseif isHolding then
-                -- Se já pegou o instrumento, apenas clica para começar a tocar onde está (em pé)
+            elseif isHolding and hum.Sit then
+                -- 3. Sentou com o instrumento na mão (Text = Play): usa o smart_click para começar a tocar
                 task.wait(0.5)
                 task.spawn(function()
                     CarregarModulo("smart_click")
                 end)
-                task.wait(2) 
+                task.wait(3) 
                 
-            elseif not isHolding and not isPlaying then
-                -- Sem nada na mão: Procura o instrumento, vai até ele e APERTA E
-                local instrumentPart = GetTarget(InstrumentObjects)
-                if instrumentPart then
-                    local door = CarregarModulo("smart_door.lua")
-                    if door then door.IrPara(instrumentPart) end
+            elseif isHolding and not hum.Sit then
+                -- 2. Está com o instrumento na mão (Text = Play) mas em pé: vai para o sofá sentar
+                local seatPart = GetTarget(SeatObjects)
+                if seatPart then
+                    local door = CarregarModulo("smart_door.lua") 
+                    if door then door.IrPara(seatPart) end
                     
                     local cam = CarregarModulo("smart_cam")
                     if cam then 
-                        local cameraPronta = cam.OlharPara(instrumentPart)
+                        local cameraPronta = cam.OlharPara(seatPart)
                         if cameraPronta then
-                            Espera_ApertaE_Reseta({"take", "equip", "play", "pegar", "tocar", "use", "usar"})
+                            Espera_ApertaE_Reseta({"sit", "use", "sentar", "usar"})
+                        end
+                    end
+                end
+                
+            elseif not isHolding and not isPlaying then
+                -- O TEXTO "PLAY" SUMIU OU ESTÁ DE MÃOS VAZIAS
+                if hum.Sit then
+                    -- Se o objeto sumiu enquanto ele estava sentado, levanta primeiro!
+                    hum.Jump = true
+                    task.wait(1)
+                else
+                    -- 1. Sem nada na mão e em pé: procura um instrumento, vai até ele e pega
+                    local instrumentPart = GetTarget(InstrumentObjects)
+                    if instrumentPart then
+                        local door = CarregarModulo("smart_door.lua")
+                        if door then door.IrPara(instrumentPart) end
+                        
+                        local cam = CarregarModulo("smart_cam")
+                        if cam then 
+                            local cameraPronta = cam.OlharPara(instrumentPart)
+                            if cameraPronta then
+                                Espera_ApertaE_Reseta({"take", "equip", "play", "pegar", "tocar", "use"})
+                            end
                         end
                     end
                 end
