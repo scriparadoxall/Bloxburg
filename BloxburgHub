@@ -7,29 +7,38 @@ local VirtualUser = game:GetService("VirtualUser")
 if _G.MostrarBolinhas == nil then _G.MostrarBolinhas = false end
 if _G.MostrarObjetosIntel == nil then _G.MostrarObjetosIntel = false end
 
--- Limpeza
+-- Limpeza de instâncias antigas
 if _G.BloxburgChef and typeof(_G.BloxburgChef.Stop) == "function" then pcall(function() _G.BloxburgChef.Stop() end) end
 if _G.SmartDoor and typeof(_G.SmartDoor.Cancelar) == "function" then pcall(function() _G.SmartDoor.Cancelar() end) end
 if _G.Intelligence and typeof(_G.Intelligence.Stop) == "function" then pcall(function() _G.Intelligence.Stop() end) end
 task.wait(0.2) 
 
--- 1. CARREGAR SMART DOOR
-local smartDoorURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/smart_door.lua?t=" .. tostring(tick())
-local loadDoorFunc, errDoor = loadstring(game:HttpGet(smartDoorURL))
-if loadDoorFunc then _G.SmartDoor = loadDoorFunc() else warn("ERRO NO SMART DOOR: " .. tostring(errDoor)) return end
+-- CARREGAMENTO SEGURO DOS MÓDULOS (Evita o erro do Delta Console)
+task.spawn(function()
+    pcall(function()
+        local smartDoorURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/smart_door.lua?t=" .. tostring(tick())
+        local loadDoorFunc = loadstring(game:HttpGet(smartDoorURL))
+        if loadDoorFunc then _G.SmartDoor = loadDoorFunc() end
+    end)
+end)
 
--- 2. CARREGAR BLOXBURG FOOD
-local backendURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/BloxburgFood?t=" .. tostring(tick())
-local loadFunc, loadErr = loadstring(game:HttpGet(backendURL))
-if loadFunc then loadFunc() else warn("ERRO NO CÓDIGO DA COMIDA: " .. tostring(loadErr)) return end
+task.spawn(function()
+    pcall(function()
+        local backendURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/BloxburgFood?t=" .. tostring(tick())
+        local loadFunc = loadstring(game:HttpGet(backendURL))
+        if loadFunc then loadFunc() end
+    end)
+end)
 
--- 3. CARREGAR INTELLIGENCE
-local intelURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/skills/Intelligence?t=" .. tostring(tick())
-local loadIntelFunc, intelErr = loadstring(game:HttpGet(intelURL))
-if loadIntelFunc then _G.Intelligence = loadIntelFunc() else warn("ERRO NO MÓDULO INTELLIGENCE: " .. tostring(intelErr)) end
+task.spawn(function()
+    pcall(function()
+        local intelURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/skills/Intelligence?t=" .. tostring(tick())
+        local loadIntelFunc = loadstring(game:HttpGet(intelURL))
+        if loadIntelFunc then _G.Intelligence = loadIntelFunc() end
+    end)
+end)
 
-if not _G.BloxburgChef then return end
-
+-- Remove interfaces antigas
 pcall(function() if CoreGui:FindFirstChild("Scriparadoxall") then CoreGui.Scriparadoxall:Destroy() end end)
 pcall(function() if Players.LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("Scriparadoxall") then Players.LocalPlayer.PlayerGui.Scriparadoxall:Destroy() end end)
 pcall(function() if CoreGui:FindFirstChild("ScriparadoxWarning") then CoreGui.ScriparadoxWarning:Destroy() end end)
@@ -62,20 +71,20 @@ local function LoadMainHub()
     game:GetService("UserInputService").InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + (input.Position - dragStart).X, startPos.Y.Scale, startPos.Y.Offset + (input.Position - dragStart).Y) end end)
     MainFrame.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
 
-    -- TÍTULO NO TOPO
+    -- TÍTULO NO TOPO (Ajustado)
     local Title = Instance.new("TextLabel", MainFrame)
-    Title.BackgroundTransparency = 1; Title.Size = UDim2.new(0, 200, 0, 25); Title.Position = UDim2.new(0, 15, 0, 5)
-    Title.Font = Enum.Font.GothamBold; Title.Text = "Scriparadoxall Hub"; Title.TextColor3 = Color3.fromRGB(255, 255, 255); Title.TextSize = 18; Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.BackgroundTransparency = 1; Title.Size = UDim2.new(0, 200, 0, 20); Title.Position = UDim2.new(0, 15, 0, 2)
+    Title.Font = Enum.Font.GothamBold; Title.Text = "Scriparadoxall Hub"; Title.TextColor3 = Color3.fromRGB(255, 255, 255); Title.TextSize = 16; Title.TextXAlignment = Enum.TextXAlignment.Left
 
-    -- AVISO DE BETA FIXO LÁ EM CIMA (Logo abaixo do título)
+    -- AVISO DE BETA FIXO (Bem abaixo do título, sempre visível)
     local BetaLabel = Instance.new("TextLabel", MainFrame)
-    BetaLabel.BackgroundTransparency = 1; BetaLabel.Size = UDim2.new(0, 300, 0, 15); BetaLabel.Position = UDim2.new(0, 15, 0, 23)
-    BetaLabel.Font = Enum.Font.Gotham; BetaLabel.Text = "Hub Beta version - Há diversos bugs sendo corrigidos."; BetaLabel.TextColor3 = Color3.fromRGB(180, 180, 180); BetaLabel.TextSize = 10; BetaLabel.TextXAlignment = Enum.TextXAlignment.Left
+    BetaLabel.BackgroundTransparency = 1; BetaLabel.Size = UDim2.new(0, 300, 0, 15); BetaLabel.Position = UDim2.new(0, 15, 0, 22)
+    BetaLabel.Font = Enum.Font.GothamSemibold; BetaLabel.Text = "⚠️ Hub Beta version - Há diversos bugs sendo corrigidos."; BetaLabel.TextColor3 = Color3.fromRGB(255, 170, 0); BetaLabel.TextSize = 11; BetaLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-    -- AVISO DE PAUSADO (Direcionado mais para a direita)
+    -- AVISO DE PAUSADO (Canto superior direito)
     local PausedLabel = Instance.new("TextLabel", MainFrame)
     PausedLabel.BackgroundTransparency = 1; PausedLabel.Size = UDim2.new(0, 100, 0, 40); PausedLabel.Position = UDim2.new(1, -150, 0, 0)
-    PausedLabel.Font = Enum.Font.GothamBold; PausedLabel.Text = ""; PausedLabel.TextColor3 = Color3.fromRGB(255, 80, 80); PausedLabel.TextSize = 14; PausedLabel.TextXAlignment = Enum.TextXAlignment.Right
+    PausedLabel.Font = Enum.Font.GothamBold; PausedLabel.Text = ""; PausedLabel.TextColor3 = Color3.fromRGB(255, 80, 80); PausedLabel.TextSize = 13; PausedLabel.TextXAlignment = Enum.TextXAlignment.Right
 
     local Divider = Instance.new("Frame", MainFrame)
     Divider.BackgroundColor3 = Color3.fromRGB(60, 60, 60); Divider.BorderSizePixel = 0; Divider.Position = UDim2.new(0, 0, 0, 40); Divider.Size = UDim2.new(1, 0, 0, 1)
@@ -173,11 +182,11 @@ local function LoadMainHub()
     IntelFarmBtn.MouseButton1Click:Connect(function()
         if isIntelActive then
             isIntelActive = false; IntelFarmBtn.Text = "▶ Iniciar Inteligência"; IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
-            if _G.Intelligence then _G.Intelligence.Stop() end
+            pcall(function() if _G.Intelligence then _G.Intelligence.Stop() end end)
         else
             isIntelActive = true; IntelFarmBtn.Text = "🛑 Parar Inteligência"; IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
             PausedLabel.Text = ""
-            if _G.Intelligence then _G.Intelligence.Start() end
+            pcall(function() if _G.Intelligence then _G.Intelligence.Start() end end)
             MinimizeUI()
         end
     end)
@@ -198,11 +207,12 @@ local function LoadMainHub()
     local isUIActive = false
     FarmBtn.MouseButton1Click:Connect(function()
         if isUIActive then
-            isUIActive = false; FarmBtn.Text = "▶ Iniciar Farm"; FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40); if _G.BloxburgChef then _G.BloxburgChef.Stop() end
+            isUIActive = false; FarmBtn.Text = "▶ Iniciar Farm"; FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
+            pcall(function() if _G.BloxburgChef then _G.BloxburgChef.Stop() end end)
         else
             isUIActive = true; FarmBtn.Text = "🛑 Parar Farm"; FarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40); FoodListPanel.Visible = false; 
             PausedLabel.Text = "" 
-            if _G.BloxburgChef then _G.BloxburgChef.Start(selectedFoodUI) end
+            pcall(function() if _G.BloxburgChef then _G.BloxburgChef.Start(selectedFoodUI) end end)
             MinimizeUI()
         end
     end)
@@ -213,14 +223,14 @@ local function LoadMainHub()
             isIntelActive = false
             IntelFarmBtn.Text = "▶ Retomar Inteligência"
             IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
-            if _G.Intelligence then _G.Intelligence.Stop() end
+            pcall(function() if _G.Intelligence then _G.Intelligence.Stop() end end)
             interrompeuAlgo = true
         end
         if isUIActive then
             isUIActive = false
             FarmBtn.Text = "▶ Retomar Farm"
             FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
-            if _G.BloxburgChef then _G.BloxburgChef.Stop() end
+            pcall(function() if _G.BloxburgChef then _G.BloxburgChef.Stop() end end)
             interrompeuAlgo = true
         end
         if interrompeuAlgo then PausedLabel.Text = "⏸️ PAUSADO" end
@@ -246,23 +256,28 @@ local function LoadMainHub()
     --------------------------
     local ConfigPage = pageFrames["Config"]
 
-    -- Anti-AFK (ATIVADO POR PADRÃO IMEDIATAMENTE)
+    -- Anti-AFK (ATIVADO NATIVAMENTE NO START)
     local AntiAfkBtn = Instance.new("TextButton", ConfigPage); AntiAfkBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); AntiAfkBtn.Position = UDim2.new(0, 10, 0, 10); AntiAfkBtn.Size = UDim2.new(0, 200, 0, 40); AntiAfkBtn.Font = Enum.Font.GothamSemibold; AntiAfkBtn.Text = "🛡️ Anti-AFK [ON]"; AntiAfkBtn.TextColor3 = Color3.fromRGB(100, 255, 100); AntiAfkBtn.TextSize = 14; Instance.new("UICorner", AntiAfkBtn).CornerRadius = UDim.new(0, 6)
     
-    local antiAfkConnection; local isAntiAfkOn = true
+    local antiAfkConnection
+    local isAntiAfkOn = true
     
-    -- Inicia a proteção anti-afk automaticamente quando o hub é carregado
-    antiAfkConnection = Players.LocalPlayer.Idled:Connect(function() 
-        VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame) 
-        task.wait(1) 
-        VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame) 
-    end)
+    local function ConnectAntiAfk()
+        if antiAfkConnection then return end
+        antiAfkConnection = Players.LocalPlayer.Idled:Connect(function() 
+            VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame) 
+            task.wait(1) 
+            VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame) 
+        end)
+    end
+    
+    ConnectAntiAfk() -- Chama automaticamente ao executar o script
 
     AntiAfkBtn.MouseButton1Click:Connect(function()
         isAntiAfkOn = not isAntiAfkOn
         if isAntiAfkOn then
             AntiAfkBtn.Text = "🛡️ Anti-AFK [ON]"; AntiAfkBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
-            antiAfkConnection = Players.LocalPlayer.Idled:Connect(function() VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame) task.wait(1) VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame) end)
+            ConnectAntiAfk()
         else
             AntiAfkBtn.Text = "🛡️ Anti-AFK [OFF]"; AntiAfkBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
             if antiAfkConnection then antiAfkConnection:Disconnect(); antiAfkConnection = nil end
