@@ -44,7 +44,10 @@ local function GetTarget(list)
 
     if #found == 0 then return nil end
 
-    -- ESCOLHA ALEATÓRIA: Sorteia qualquer um da lista encontrada na casa
+    print("🎲 Instrumentos encontrados na casa: " .. #found)
+    
+    -- Garante que o sorteio seja sempre diferente
+    math.randomseed(tick())
     local chosen = found[math.random(1, #found)]
 
     if chosen then
@@ -55,10 +58,13 @@ local function GetTarget(list)
     return nil
 end
 
--- Verifica se tem instrumento na mão (olha o ActionLabel)
+-- NOVO CAMINHO: Verifica se tem instrumento na mão (olha o ActionLabel)
 local function TemInstrumentoNaMao()
     local ok, res = pcall(function()
-        local label = game:GetService("Players").LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer.ActionLabel
+        -- Usando o caminho exato que você mandou (sem LayoutContainer)
+        local label = game:GetService("Players").LocalPlayer.PlayerGui.HUDGui.Hotbar.EquippedContainer.ActionLabel
+        
+        -- Converte tudo para minúsculo para não ter problema com maiúsculas/minúsculas
         if label and label.Parent.Visible and label.Text ~= "" then
             return string.lower(label.Text)
         end
@@ -121,21 +127,22 @@ function _G.Music.Start()
 
             local handText = TemInstrumentoNaMao()
             
-            -- ESTADOS
-            local estaTocando = string.find(handText, "stop") or string.find(handText, "parar")
+            -- ESTADOS CORRIGIDOS ("pause" = tocando, "play" = segurando)
+            local estaTocando = string.find(handText, "pause") or string.find(handText, "pausar")
             local estaSegurando = string.find(handText, "play") or string.find(handText, "tocar") or string.find(handText, "use") or string.find(handText, "usar")
 
             if estaTocando then
-                -- ESTADO: TOCANDO - Checa se o item ainda existe a cada 5 segundos (sem mexer câmera)
-                print("🎵 Tocando... Verificação silenciosa ativa.")
+                -- ESTADO: TOCANDO - Fica em modo de espera silenciosa
+                print("🎵 Tocando... Botão mostra 'Pause'. Verificando a cada 5s.")
                 task.wait(5) 
                 
             elseif estaSegurando then
-                -- ESTADO: JÁ PEGOU O INSTRUMENTO
+                -- ESTADO: JÁ PEGOU O INSTRUMENTO (Botão mostra 'Play')
                 print("🎸 Instrumento na mão! Decidindo posição...")
                 
                 -- PROBABILIDADE 2 EM 1 (1 ou 2 = Sentar, 3 = Pé)
                 if not acaoDado then
+                    math.randomseed(tick())
                     acaoDado = math.random(1, 3)
                     print("🎲 Dado sorteado: " .. acaoDado .. " (1 e 2 senta, 3 fica em pé)")
                 end
@@ -173,7 +180,7 @@ function _G.Music.Start()
                 end
                 
             else
-                -- ESTADO: MÃOS VAZIAS
+                -- ESTADO: MÃOS VAZIAS (Texto sumiu ou não é nem Play nem Pause)
                 acaoDado = nil -- Reseta a decisão para o próximo ciclo
                 
                 if hum.Sit then
@@ -184,12 +191,11 @@ function _G.Music.Start()
                     local instrumentoPart = GetTarget(InstrumentObjects)
                     
                     if instrumentoPart then
-                        print("🎸 Instrumento sorteado encontrado!")
+                        print("🎸 Sorteado e indo até o instrumento!")
                         
                         local door = CarregarModulo("smart_door.lua")
                         if door then door.IrPara(instrumentoPart) end
                         
-                        -- ÚNICO MOMENTO QUE MEXE A CÂMERA: Para pegar o item
                         local cam = CarregarModulo("smart_cam")
                         if cam and cam.OlharPara(instrumentoPart) then
                             Espera_ApertaE_Reseta({"take", "equip", "play", "pegar", "tocar", "use", "usar"})
