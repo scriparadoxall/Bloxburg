@@ -24,10 +24,18 @@ local function CarregarModulo(nomeExato)
     return s and r or nil
 end
 
-local function GetTarget(list)
+-- MUDANÇA 1: Pega apenas UM instrumento (o mais próximo) e armazena
+local instrumentoSelecionado = nil
+local instrumentoNome = nil
+
+local function GetTarget(list, especifico)
     local p = workspace.Plots:FindFirstChild("Plot_" .. Players.LocalPlayer.Name)
     local folder = p and p:FindFirstChild("House") and p.House:FindFirstChild("Objects")
     if not folder then return nil end
+
+    local char = Players.LocalPlayer.Character
+    local humRootPart = char and char:FindFirstChild("HumanoidRootPart")
+    if not humRootPart then return nil end
 
     local found = {}
     for _, obj in ipairs(folder:GetChildren()) do
@@ -39,11 +47,38 @@ local function GetTarget(list)
         end
     end
 
-    if #found > 0 then
-        local chosen = found[math.random(1, #found)]
+    if #found == 0 then return nil end
+
+    -- Se especifico, retorna exatamente aquele objeto
+    if especifico then
+        for _, obj in ipairs(found) do
+            if obj.Name == especifico then
+                local part = obj:FindFirstChild("Seat", true) or obj:FindFirstChild("Door1", true) or obj
+                return part, obj.Name
+            end
+        end
+    end
+
+    -- Caso contrário, pega o mais próximo
+    local chosen = nil
+    local menorDist = math.huge
+    
+    for _, obj in ipairs(found) do
+        local objPos = obj:IsA("BasePart") and obj.Position or (obj:FindFirstChildWhichIsA("BasePart") and obj:FindFirstChildWhichIsA("BasePart").Position or nil)
+        if objPos then
+            local dist = (humRootPart.Position - objPos).Magnitude
+            if dist < menorDist then
+                menorDist = dist
+                chosen = obj
+            end
+        end
+    end
+
+    if chosen then
         local part = chosen:FindFirstChild("Seat", true) or chosen:FindFirstChild("Door1", true) or chosen
         return part, chosen.Name
     end
+    
     return nil
 end
 
@@ -94,9 +129,24 @@ local function Espera_ApertaE_Reseta(validWords)
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
         task.wait(0.2)
         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-        task.wait(1) -- PAUSA DE SEGURANÇA: Espera o instrumento aparecer na mão
+        task.wait(1)
     end
     return achouUI
+end
+
+-- Simula clique do mouse para tocar
+local function ClacarParaTocar()
+    local mouse = Players.LocalPlayer:GetMouse()
+    
+    pcall(function()
+        mouse.Button1Down:Fire()
+    end)
+    
+    task.wait(0.08)
+    
+    pcall(function()
+        mouse.Button1Up:Fire()
+    end)
 end
 
 function _G.Music.Start()
@@ -113,58 +163,96 @@ function _G.Music.Start()
 
             local handText = CheckHand()
             
-            -- Se tiver "play", "tocar" ou "stop" (já tocando), ele NÃO busca outro instrumento
-            local isHolding = string.find(handText, "play") or string.find(handText, "tocar") or string.find(handText, "use") or string.find(handText, "usar")
+            -- MUDANÇA 2: Verifica se está tocando (tem "stop" ou "parar" na mão)
             local isPlaying = string.find(handText, "stop") or string.find(handText, "parar")
 
             if isPlaying then
-                -- ESTADO: TOCANDO. Fica quieto e só verifica se sumiu.
+                -- ESTADO: TOCANDO. Aguarda até sumir o "stop"
                 task.wait(2)
                 
-            elseif isHolding then
-                -- ESTADO: JÁ PEGOU. Agora decide se senta ou toca em pé.
-                if hum.Sit then
-                    -- Se já sentou, começa a tocar
-                    task.wait(0.5)
-                    task.spawn(function() CarregarModulo("smart_click") end)
-                    task.wait(3)
-                else
-                    -- DADO: 1 tenta sentar, 2 fica em pé.
-                    local dado = math.random(1, 2)
-                    local seatPart = (dado == 1) and GetTarget(SeatObjects) or nil
+            else
+                -- MUDANÇA 3: Se NÃO tem instrumento, procura UM e armazena
+                if not instrumentoSelecionado then
+                    if hum.Sit then
+                        hum.Jump = true 
+                        task.wait(1)
+                    else
+                        instrumentoSelecionado = GetTarget(InstrumentObjects)
+                        if instrumentoSelecionado then
+                            instrumentoNome = (instrumentoSelecionado.Parent and instrumentoSelecionado.Parent.Name) or instrumentoSelecionado.Name
+                            print("🎸 Instrumento selecionado: " .. instrumentoNome)
+                            
+                            local door = CarregarModulo("smart_door.lua")
+                            if door then door.IrPara(instrumentoSelecionado) end
+                            
+                            local cam = CarregarModulo("smart_cam")
+                            if cam and cam.OlharPara(instrumentoSelecionado) then
+                                Espera_ApertaE_Reseta({"take", "equip", "play", "pegar", "tocar", "use"})
+                            end
+                        else
+                            task.wait(1)
+                        end
+                    end
                     
-                    if seatPart then
-                        local door = CarregarModulo("smart_door.lua") 
-                        if door then door.IrPara(seatPart) end
+                else
+                    -- MUDANÇA 4: Já tem instrumento. Agora joga dado para decidir ação
+                    local isHolding = string.find(handText, "play") or string.find(handText, "tocar") or string.find(handText, "use") or string.find(handText, "usar")
+                    
+                    if isHolding then
+                        -- Pegou o instrumento. Joga dado UMA VEZ
+                        local dado = math.random(1, 2)
+                        print("🎲 Dado: " .. dado)
                         
-                        local cam = CarregarModulo("smart_cam")
-                        if cam and cam.OlharPara(seatPart) then
-                            Espera_ApertaE_Reseta({"sit", "use", "sentar", "usar"})
+                        if dado == 1 then
+                            -- DADO 1: DE PÉ - Apenas clica para tocar
+                            print("🎵 Ação 1: DE PÉ - Tocando música")
+                            ClacarParaTocar()
+                            task.wait(3)
+                            
+                        else
+                            -- DADO 2: SENTADO - Procura uma cadeira
+                            print("🪑 Ação 2: SENTADO - Procurando cadeira")
+                            local seatPart = GetTarget(SeatObjects)
+                            
+                            if seatPart then
+                                local door = CarregarModulo("smart_door.lua") 
+                                if door then door.IrPara(seatPart) end
+                                
+                                local cam = CarregarModulo("smart_cam")
+                                if cam and cam.OlharPara(seatPart) then
+                                    Espera_ApertaE_Reseta({"sit", "use", "sentar", "usar"})
+                                end
+                                
+                                task.wait(1)
+                                -- Agora toca
+                                ClacarParaTocar()
+                                task.wait(3)
+                            else
+                                -- Não achou cadeira, toca em pé
+                                print("⚠️ Cadeira não encontrada, tocando em pé")
+                                ClacarParaTocar()
+                                task.wait(3)
+                            end
+                        end
+                        
+                        -- MUDANÇA 5: Aguarda até a música acabar (até sumir o "stop")
+                        local timeout = tick() + 30 -- Máximo 30 segundos
+                        while isFarmingMusic and currentMacroId == myId and tick() < timeout do
+                            local handCheck = CheckHand()
+                            if string.find(handCheck, "stop") or string.find(handCheck, "parar") then
+                                -- Ainda tocando
+                                task.wait(2)
+                            else
+                                -- Acabou! Reseta para buscar novo instrumento
+                                print("✅ Música acabou!")
+                                instrumentoSelecionado = nil
+                                instrumentoNome = nil
+                                break
+                            end
                         end
                     else
-                        -- Não achou cadeira ou preferiu ficar em pé
+                        -- Ainda não pegou o instrumento
                         task.wait(0.5)
-                        task.spawn(function() CarregarModulo("smart_click") end)
-                        task.wait(3)
-                    end
-                end
-                
-            else
-                -- ESTADO: MÃOS VAZIAS. Só aqui ele busca um instrumento.
-                if hum.Sit then
-                    hum.Jump = true 
-                    task.wait(1)
-                else
-                    local instrumentPart = GetTarget(InstrumentObjects)
-                    if instrumentPart then
-                        local door = CarregarModulo("smart_door.lua")
-                        if door then door.IrPara(instrumentPart) end
-                        
-                        local cam = CarregarModulo("smart_cam")
-                        if cam and cam.OlharPara(instrumentPart) then
-                            -- Pega o instrumento
-                            Espera_ApertaE_Reseta({"take", "equip", "play", "pegar", "tocar", "use"})
-                        end
                     end
                 end
             end
@@ -177,6 +265,8 @@ end
 function _G.Music.Stop()
     isFarmingMusic = false
     currentMacroId = currentMacroId + 1
+    instrumentoSelecionado = nil
+    instrumentoNome = nil
     pcall(function()
         local cam = CarregarModulo("smart_cam")
         if cam and cam.Reset then cam.Reset() end
