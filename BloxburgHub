@@ -5,7 +5,7 @@ local VirtualUser = game:GetService("VirtualUser")
 
 -- Configurações padrão
 if _G.MostrarBolinhas == nil then _G.MostrarBolinhas = false end
-if _G.MostrarObjetosIntel == nil then _G.MostrarObjetosIntel = false end -- Novo!
+if _G.MostrarObjetosIntel == nil then _G.MostrarObjetosIntel = false end
 
 -- Limpeza
 if _G.BloxburgChef and typeof(_G.BloxburgChef.Stop) == "function" then pcall(function() _G.BloxburgChef.Stop() end) end
@@ -79,14 +79,23 @@ local function LoadMainHub()
     Instance.new("UICorner", OpenButton).CornerRadius = UDim.new(1, 0)
 
     local tweenInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-    HideButton.MouseButton1Click:Connect(function()
+    
+    -- Função global de minimizar para ser chamada por qualquer botão
+    local function MinimizeUI()
         if not MainFrame.Visible then return end
         TweenService:Create(MainFrame, tweenInfo, {Size = UDim2.new(0, 550, 0, 0)}):Play()
         task.wait(0.4)
         MainFrame.Visible = false; OpenButton.Visible = true
         TweenService:Create(OpenButton, tweenInfo, {Size = UDim2.new(0, 50, 0, 50)}):Play()
-    end)
+    end
+    
+    HideButton.MouseButton1Click:Connect(MinimizeUI)
+
+    -- Declarando PararTudo para usá-la antes de ser definida
+    local PararTudo
+    
     OpenButton.MouseButton1Click:Connect(function()
+        if PararTudo then PararTudo() end -- Pausa os farms se a interface for aberta
         TweenService:Create(OpenButton, tweenInfo, {Size = UDim2.new(0, 0, 0, 0)}):Play()
         OpenButton.Visible = false; MainFrame.Visible = true; 
         TweenService:Create(MainFrame, tweenInfo, {Size = UDim2.new(0, 550, 0, 300)}):Play()
@@ -137,7 +146,7 @@ local function LoadMainHub()
     -- COOKING
     local CookingFrame = Instance.new("Frame", SkillsScroll); CookingFrame.Size = UDim2.new(1, -10, 0, 75); CookingFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25); Instance.new("UICorner", CookingFrame).CornerRadius = UDim.new(0, 6)
     local CookingTitle = Instance.new("TextLabel", CookingFrame); CookingTitle.BackgroundTransparency = 1; CookingTitle.Position = UDim2.new(0, 10, 0, 5); CookingTitle.Size = UDim2.new(1, -20, 0, 20); CookingTitle.Font = Enum.Font.GothamBold; CookingTitle.Text = "👨‍🍳 Cooking (Auto-Farm)"; CookingTitle.TextColor3 = Color3.fromRGB(255, 200, 100); CookingTitle.TextSize = 14; CookingTitle.TextXAlignment = Enum.TextXAlignment.Left
-    
+
     local selectedFoodUI = "Hot Dogs"
     local FoodBtn = Instance.new("TextButton", CookingFrame); FoodBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); FoodBtn.Position = UDim2.new(0, 10, 0, 35); FoodBtn.Size = UDim2.new(0, 150, 0, 30); FoodBtn.Font = Enum.Font.GothamSemibold; FoodBtn.Text = "🍕 " .. selectedFoodUI; FoodBtn.TextColor3 = Color3.fromRGB(255, 255, 255); FoodBtn.TextSize = 12; Instance.new("UICorner", FoodBtn).CornerRadius = UDim.new(0, 6)
     local FarmBtn = Instance.new("TextButton", CookingFrame); FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40); FarmBtn.Position = UDim2.new(0, 170, 0, 35); FarmBtn.Size = UDim2.new(0, 120, 0, 30); FarmBtn.Font = Enum.Font.GothamBold; FarmBtn.Text = "▶ Iniciar Farm"; FarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255); FarmBtn.TextSize = 12; Instance.new("UICorner", FarmBtn).CornerRadius = UDim.new(0, 6)
@@ -145,7 +154,7 @@ local function LoadMainHub()
     -- INTELLIGENCE
     local IntelFrame = Instance.new("Frame", SkillsScroll); IntelFrame.Size = UDim2.new(1, -10, 0, 75); IntelFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25); Instance.new("UICorner", IntelFrame).CornerRadius = UDim.new(0, 6)
     local IntelTitle = Instance.new("TextLabel", IntelFrame); IntelTitle.BackgroundTransparency = 1; IntelTitle.Position = UDim2.new(0, 10, 0, 5); IntelTitle.Size = UDim2.new(1, -20, 0, 20); IntelTitle.Font = Enum.Font.GothamBold; IntelTitle.Text = "🧠 Intelligence (Auto-Read)"; IntelTitle.TextColor3 = Color3.fromRGB(150, 150, 255); IntelTitle.TextSize = 14; IntelTitle.TextXAlignment = Enum.TextXAlignment.Left
-    
+
     local IntelFarmBtn = Instance.new("TextButton", IntelFrame); IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40); IntelFarmBtn.Position = UDim2.new(0, 10, 0, 35); IntelFarmBtn.Size = UDim2.new(0, 280, 0, 30); IntelFarmBtn.Font = Enum.Font.GothamBold; IntelFarmBtn.Text = "▶ Iniciar Inteligência"; IntelFarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255); IntelFarmBtn.TextSize = 12; Instance.new("UICorner", IntelFarmBtn).CornerRadius = UDim.new(0, 6)
 
     local isIntelActive = false
@@ -156,6 +165,7 @@ local function LoadMainHub()
         else
             isIntelActive = true; IntelFarmBtn.Text = "🛑 Parar Inteligência"; IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
             if _G.Intelligence then _G.Intelligence.Start() end
+            MinimizeUI() -- Minimiza ao iniciar
         end
     end)
 
@@ -178,8 +188,25 @@ local function LoadMainHub()
             isUIActive = false; FarmBtn.Text = "▶ Iniciar Farm"; FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40); if _G.BloxburgChef then _G.BloxburgChef.Stop() end
         else
             isUIActive = true; FarmBtn.Text = "🛑 Parar Farm"; FarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40); FoodListPanel.Visible = false; if _G.BloxburgChef then _G.BloxburgChef.Start(selectedFoodUI) end
+            MinimizeUI() -- Minimiza ao iniciar
         end
     end)
+    
+    -- Função principal de interrupção (atualiza botões caso estivessem ligados)
+    PararTudo = function()
+        if isIntelActive then
+            isIntelActive = false
+            IntelFarmBtn.Text = "▶ Iniciar Inteligência"
+            IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
+            if _G.Intelligence then _G.Intelligence.Stop() end
+        end
+        if isUIActive then
+            isUIActive = false
+            FarmBtn.Text = "▶ Iniciar Farm"
+            FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
+            if _G.BloxburgChef then _G.BloxburgChef.Stop() end
+        end
+    end
 
     --------------------------
     -- AUTOMATIONS (Logs)
@@ -223,7 +250,7 @@ local function LoadMainHub()
         else RouteBtn.Text = "👁️ Rota Visual [OFF]"; RouteBtn.TextColor3 = Color3.fromRGB(255, 100, 100) end
     end)
 
-    -- Mostrar Objetos (NOVO)
+    -- Mostrar Objetos
     local ObjBtn = Instance.new("TextButton", ConfigPage); ObjBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); ObjBtn.Position = UDim2.new(0, 10, 0, 110); ObjBtn.Size = UDim2.new(0, 200, 0, 40); ObjBtn.Font = Enum.Font.GothamSemibold; ObjBtn.TextSize = 13; Instance.new("UICorner", ObjBtn).CornerRadius = UDim.new(0, 6)
     if _G.MostrarObjetosIntel then ObjBtn.Text = "📦 Marcar Objetos [ON]"; ObjBtn.TextColor3 = Color3.fromRGB(100, 255, 100) else ObjBtn.Text = "📦 Marcar Objetos [OFF]"; ObjBtn.TextColor3 = Color3.fromRGB(255, 100, 100) end
     ObjBtn.MouseButton1Click:Connect(function()
