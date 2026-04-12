@@ -1,4 +1,3 @@
-```lua
 _G.Music = _G.Music or {}
 
 local Players = game:GetService("Players")
@@ -25,10 +24,8 @@ local function CarregarModulo(nomeExato)
     return s and r or nil
 end
 
--- Armazena o instrumento selecionado
-local instrumentoSelecionado = nil
-local instrumentoNome = nil
-local acaoDado = nil -- Armazena a ação (1 = de pé, 2 = sentado)
+-- Armazena o estado do dado
+local acaoDado = nil 
 
 local function GetTarget(list)
     local p = workspace.Plots:FindFirstChild("Plot_" .. Players.LocalPlayer.Name)
@@ -126,36 +123,6 @@ local function Espera_ApertaE_Reseta(validWords)
     return achouUI
 end
 
--- Move o mouse e clica usando smart_click
-local function ClacarParaTocar()
-    local player = Players.LocalPlayer
-    local hotbar = player.PlayerGui.HUDGui.Hotbar
-    
-    local equippedContainer = hotbar:FindFirstChild("EquippedContainer")
-    
-    if not equippedContainer then return false end
-    
-    local equippedButton = equippedContainer:FindFirstChild("EquippedButton")
-    
-    if not equippedButton or not equippedButton.Visible then
-        return false
-    end
-    
-    local botaoPos = equippedButton.AbsolutePosition
-    local botaoSize = equippedButton.AbsoluteSize
-    local centerX = botaoPos.X + (botaoSize.X / 2)
-    local centerY = botaoPos.Y + (botaoSize.Y / 2)
-    
-    -- Carrega o módulo smart_click e clica
-    local smartClick = CarregarModulo("smart_click")
-    if smartClick and smartClick.Click then
-        smartClick.Click(centerX, centerY)
-        return true
-    end
-    
-    return false
-end
-
 function _G.Music.Start()
     if isFarmingMusic then return end
     isFarmingMusic = true
@@ -170,13 +137,12 @@ function _G.Music.Start()
 
             local handText = TemInstrumentoNaMao()
             
-            -- CORREÇÃO: "Stop" ou "Parar" significa que ele JÁ está tocando.
+            -- ESTADOS
             local estaTocando = string.find(handText, "stop") or string.find(handText, "parar")
-            -- "Play", "Tocar", "Usar" significa que está na mão mas parado.
             local estaSegurando = string.find(handText, "play") or string.find(handText, "tocar") or string.find(handText, "use") or string.find(handText, "usar")
 
             if estaTocando then
-                -- ESTADO: TOCANDO - Aguarda até sumir o "Stop" (quando ele perder o instrumento)
+                -- ESTADO: TOCANDO - Aguarda até perder o instrumento
                 print("🎵 Tocando música... Aguardando...")
                 task.wait(2)
                 
@@ -184,17 +150,16 @@ function _G.Music.Start()
                 -- ESTADO: JÁ PEGOU O INSTRUMENTO, MAS AINDA NÃO TOCOU
                 print("🎸 Instrumento na mão!")
                 
-                -- Se ainda não jogou o dado, joga agora
                 if not acaoDado then
                     acaoDado = math.random(1, 2)
                     print("🎲 Dado: " .. acaoDado)
                 end
                 
                 if acaoDado == 1 then
-                    -- AÇÃO 1: DE PÉ - Apenas clica para tocar
-                    print("🎵 Ação 1: DE PÉ - Começando a tocar")
-                    ClacarParaTocar()
-                    task.wait(1)
+                    -- AÇÃO 1: DE PÉ - Chama o smart_click
+                    print("🎵 Ação 1: DE PÉ - Chamando smart_click")
+                    task.spawn(function() CarregarModulo("smart_click") end)
+                    task.wait(2)
                     
                 else
                     -- AÇÃO 2: SENTADO - Procura uma cadeira e senta
@@ -210,17 +175,17 @@ function _G.Music.Start()
                             if cam and cam.OlharPara(seatPart) then
                                 Espera_ApertaE_Reseta({"sit", "use", "sentar", "usar"})
                             end
-                            task.wait(1.5) -- Espera o boneco sentar de verdade
+                            task.wait(1.5) 
                         else
-                            print("⚠️ Cadeira não encontrada, vou tocar em pé mesmo!")
-                            ClacarParaTocar()
-                            task.wait(1)
+                            print("⚠️ Cadeira não encontrada, tocando em pé!")
+                            task.spawn(function() CarregarModulo("smart_click") end)
+                            task.wait(2)
                         end
                     else
-                        -- Já está sentado, agora é só clicar pra tocar
-                        print("🎵 Já estou sentado, tocando...")
-                        ClacarParaTocar()
-                        task.wait(1)
+                        -- Já está sentado, chama o smart_click
+                        print("🎵 Já estou sentado, chamando smart_click...")
+                        task.spawn(function() CarregarModulo("smart_click") end)
+                        task.wait(2)
                     end
                 end
                 
@@ -237,7 +202,6 @@ function _G.Music.Start()
                     
                     if instrumentoPart then
                         print("🎸 Instrumento encontrado!")
-                        instrumentoSelecionado = instrumentoPart
                         
                         local door = CarregarModulo("smart_door.lua")
                         if door then door.IrPara(instrumentoPart) end
@@ -261,8 +225,6 @@ end
 function _G.Music.Stop()
     isFarmingMusic = false
     currentMacroId = currentMacroId + 1
-    instrumentoSelecionado = nil
-    instrumentoNome = nil
     acaoDado = nil
     pcall(function()
         local cam = CarregarModulo("smart_cam")
