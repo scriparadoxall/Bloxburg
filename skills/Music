@@ -209,16 +209,18 @@ function _G.Music.Start()
 
             local handText = TemInstrumentoNaMao()
             
-            -- Se ActionLabel tem "Play" = está tocando música
-            local estaocando = string.find(handText, "play")
+            -- CORREÇÃO: "Stop" ou "Parar" significa que ele JÁ está tocando.
+            local estaTocando = string.find(handText, "stop") or string.find(handText, "parar")
+            -- "Play", "Tocar", "Usar" significa que está na mão mas parado.
+            local estaSegurando = string.find(handText, "play") or string.find(handText, "tocar") or string.find(handText, "use") or string.find(handText, "usar")
 
-            if estaocando then
-                -- ESTADO: TOCANDO - Aguarda até sumir o "Play"
+            if estaTocando then
+                -- ESTADO: TOCANDO - Aguarda até sumir o "Stop" (quando ele perder o instrumento)
                 print("🎵 Tocando música... Aguardando...")
                 task.wait(2)
                 
-            elseif string.find(handText, "play") or string.find(handText, "tocar") or string.find(handText, "usar") then
-                -- ESTADO: JÁ PEGOU O INSTRUMENTO
+            elseif estaSegurando then
+                -- ESTADO: JÁ PEGOU O INSTRUMENTO, MAS AINDA NÃO TOCOU
                 print("🎸 Instrumento na mão!")
                 
                 -- Se ainda não jogou o dado, joga agora
@@ -229,7 +231,7 @@ function _G.Music.Start()
                 
                 if acaoDado == 1 then
                     -- AÇÃO 1: DE PÉ - Apenas clica para tocar
-                    print("🎵 Ação 1: DE PÉ - Tocando música")
+                    print("🎵 Ação 1: DE PÉ - Começando a tocar")
                     ClacarParaTocar()
                     task.wait(1)
                     
@@ -247,21 +249,648 @@ function _G.Music.Start()
                             if cam and cam.OlharPara(seatPart) then
                                 Espera_ApertaE_Reseta({"sit", "use", "sentar", "usar"})
                             end
-                            
-                            task.wait(1)
+                            task.wait(1.5) -- Espera o boneco sentar de verdade
                         else
-                            print("⚠️ Cadeira não encontrada")
+                            print("⚠️ Cadeira não encontrada, vou tocar em pé mesmo!")
+                            ClacarParaTocar()
+                            task.wait(1)
                         end
+                    else
+                        -- Já está sentado, agora é só clicar pra tocar
+                        print("🎵 Já estou sentado, tocando...")
+                        ClacarParaTocar()
+                        task.wait(1)
                     end
-                    
-                    -- Agora toca
-                    print("🎵 Tocando...")
-                    ClacarParaTocar()
-                    task.wait(1)
                 end
                 
             else
                 -- ESTADO: MÃOS VAZIAS - Procura instrumento
+                acaoDado = nil -- Reseta o dado pra próxima vez
+                
+                if hum.Sit then
+                    hum.Jump = true 
+                    task.wait(1)
+                else
+                    print("🔍 Procurando instrumento...")
+                    local instrumentoPart = GetTarget(InstrumentObjects)
+                    
+                    if instrumentoPart then
+                        print("🎸 Instrumento encontrado!")
+                        instrumentoSelecionado = instrumentoPart
+                        
+                        local door = CarregarModulo("smart_door.lua")
+                        if door then door.IrPara(instrumentoPart) end
+                        
+                        local cam = CarregarModulo("smart_cam")
+                        if cam and cam.OlharPara(instrumentoPart) then
+                            Espera_ApertaE_Reseta({"take", "equip", "play", "pegar", "tocar", "use", "usar"})
+                        end
+                    else
+                        print("⏳ Nenhum instrumento encontrado")
+                        task.wait(1)
+                    end
+                end
+            end
+            
+            task.wait(0.5)
+        end
+    end)
+end
+
+function _G.Music.Stop()
+    isFarmingMusic = false
+    currentMacroId = currentMacroId + 1
+    instrumentoSelecionado = nil
+    instrumentoNome = nil
+    acaoDado = nil
+    pcall(function()
+        local cam = CarregarModulo("smart_cam")
+        if cam and cam.Reset then cam.Reset() end
+    end)
+end
+
+return _G.Music
+_G.Music = _G.Music or {}
+
+local Players = game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local isFarmingMusic = false
+local currentMacroId = 0
+
+-- Lista com os instrumentos
+local InstrumentObjects = {
+    "Toy Maracas", 
+    "Toy Tambourine", 
+    "Electric Guitar", 
+    "Rockstar Guitar", 
+    "Modern Guitar", 
+    "Acoustic Guitar"
+}
+
+-- Lista de assentos
+local SeatObjects = {"Sofa", "Chair", "Stool", "Bench"}
+
+local function CarregarModulo(nomeExato)
+    local url = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/" .. nomeExato
+    local s, r = pcall(function() return loadstring(game:HttpGet(url))() end)
+    return s and r or nil
+end
+
+-- Armazena o instrumento selecionado
+local instrumentoSelecionado = nil
+local instrumentoNome = nil
+local acaoDado = nil -- Armazena a ação (1 = de pé, 2 = sentado)
+
+local function GetTarget(list)
+    local p = workspace.Plots:FindFirstChild("Plot_" .. Players.LocalPlayer.Name)
+    local folder = p and p:FindFirstChild("House") and p.House:FindFirstChild("Objects")
+    if not folder then return nil end
+
+    local char = Players.LocalPlayer.Character
+    local humRootPart = char and char:FindFirstChild("HumanoidRootPart")
+    if not humRootPart then return nil end
+
+    local found = {}
+    for _, obj in ipairs(folder:GetChildren()) do
+        for _, name in ipairs(list) do
+            if string.find(string.lower(obj.Name), string.lower(name)) then 
+                table.insert(found, obj) 
+                break 
+            end
+        end
+    end
+
+    if #found == 0 then return nil end
+
+    -- Pega o mais próximo
+    local chosen = nil
+    local menorDist = math.huge
+    
+    for _, obj in ipairs(found) do
+        local objPos = obj:IsA("BasePart") and obj.Position or (obj:FindFirstChildWhichIsA("BasePart") and obj:FindFirstChildWhichIsA("BasePart").Position or nil)
+        if objPos then
+            local dist = (humRootPart.Position - objPos).Magnitude
+            if dist < menorDist then
+                menorDist = dist
+                chosen = obj
+            end
+        end
+    end
+
+    if chosen then
+        local part = chosen:FindFirstChild("Seat", true) or chosen:FindFirstChild("Door1", true) or chosen
+        return part, chosen.Name
+    end
+    
+    return nil
+end
+
+-- Verifica se tem instrumento na mão (olha o ActionLabel)
+local function TemInstrumentoNaMao()
+    local ok, res = pcall(function()
+        local label = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer.ActionLabel
+        if label and label.Parent.Visible and label.Text ~= "" then
+            return string.lower(label.Text)
+        end
+        return "" 
+    end)
+    return ok and res or ""
+end
+
+local function Espera_ApertaE_Reseta(validWords)
+    pcall(function()
+        local cam = CarregarModulo("smart_cam")
+        if cam and cam.Reset then cam.Reset() end
+    end)
+    task.wait(0.5) 
+    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+    local timeout = tick() + 2.5 
+    local achouUI = false
+    
+    while tick() < timeout do
+        local interactUI = playerGui:FindFirstChild("_interactUI")
+        if interactUI then
+            local indicator = interactUI:FindFirstChild("InteractIndicator")
+            if indicator and indicator.Visible then
+                local textLabel = indicator:FindFirstChild("TextLabel")
+                if textLabel then
+                    local txt = string.lower(textLabel.Text)
+                    for _, word in ipairs(validWords) do
+                        if string.find(txt, word) then
+                            achouUI = true
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        if achouUI then break end
+        task.wait(0.1)
+    end
+    
+    if achouUI then
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+        task.wait(0.2)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+        task.wait(1)
+    end
+    return achouUI
+end
+
+-- Move o mouse e clica
+local function MoverMouseParaPonto(x, y)
+    local mouse = Players.LocalPlayer:GetMouse()
+    local velocidade = 100
+    
+    local xAtual = mouse.X
+    local yAtual = mouse.Y
+    
+    while math.abs(xAtual - x) > 5 or math.abs(yAtual - y) > 5 do
+        local distX = x - xAtual
+        local distY = y - yAtual
+        local dist = math.sqrt(distX * distX + distY * distY)
+        
+        if dist > 0 then
+            xAtual = xAtual + (distX / dist) * velocidade * (1/60)
+            yAtual = yAtual + (distY / dist) * velocidade * (1/60)
+        end
+        
+        pcall(function()
+            mouse.X = xAtual
+            mouse.Y = yAtual
+        end)
+        
+        task.wait(1/60)
+    end
+    
+    pcall(function()
+        mouse.X = x
+        mouse.Y = y
+    end)
+end
+
+-- Simula clique do mouse para tocar
+local function ClacarParaTocar()
+    local player = Players.LocalPlayer
+    local hotbar = player.PlayerGui.HUDGui.Hotbar
+    
+    local equippedContainer = hotbar:FindFirstChild("EquippedContainer")
+    
+    if not equippedContainer then return false end
+    
+    local equippedButton = equippedContainer:FindFirstChild("EquippedButton")
+    
+    if not equippedButton or not equippedButton.Visible then
+        return false
+    end
+    
+    local botaoPos = equippedButton.AbsolutePosition
+    local botaoSize = equippedButton.AbsoluteSize
+    local centerX = botaoPos.X + (botaoSize.X / 2)
+    local centerY = botaoPos.Y + (botaoSize.Y / 2)
+    
+    MoverMouseParaPonto(centerX, centerY)
+    task.wait(0.1)
+    
+    local mouse = player:GetMouse()
+    
+    pcall(function()
+        mouse.Button1Down:Fire()
+    end)
+    
+    task.wait(0.08)
+    
+    pcall(function()
+        mouse.Button1Up:Fire()
+    end)
+    
+    return true
+end
+
+function _G.Music.Start()
+    if isFarmingMusic then return end
+    isFarmingMusic = true
+    currentMacroId = currentMacroId + 1
+    local myId = currentMacroId
+
+    task.spawn(function()
+        while isFarmingMusic and currentMacroId == myId do
+            local char = Players.LocalPlayer.Character
+            local hum = char and char:FindFirstChild("Humanoid")
+            if not hum then task.wait(1) continue end
+
+            local handText = TemInstrumentoNaMao()
+            
+            -- CORREÇÃO: "Stop" ou "Parar" significa que ele JÁ está tocando.
+            local estaTocando = string.find(handText, "stop") or string.find(handText, "parar")
+            -- "Play", "Tocar", "Usar" significa que está na mão mas parado.
+            local estaSegurando = string.find(handText, "play") or string.find(handText, "tocar") or string.find(handText, "use") or string.find(handText, "usar")
+
+            if estaTocando then
+                -- ESTADO: TOCANDO - Aguarda até sumir o "Stop" (quando ele perder o instrumento)
+                print("🎵 Tocando música... Aguardando...")
+                task.wait(2)
+                
+            elseif estaSegurando then
+                -- ESTADO: JÁ PEGOU O INSTRUMENTO, MAS AINDA NÃO TOCOU
+                print("🎸 Instrumento na mão!")
+                
+                -- Se ainda não jogou o dado, joga agora
+                if not acaoDado then
+                    acaoDado = math.random(1, 2)
+                    print("🎲 Dado: " .. acaoDado)
+                end
+                
+                if acaoDado == 1 then
+                    -- AÇÃO 1: DE PÉ - Apenas clica para tocar
+                    print("🎵 Ação 1: DE PÉ - Começando a tocar")
+                    ClacarParaTocar()
+                    task.wait(1)
+                    
+                else
+                    -- AÇÃO 2: SENTADO - Procura uma cadeira e senta
+                    if not hum.Sit then
+                        print("🪑 Ação 2: SENTADO - Procurando cadeira")
+                        local seatPart = GetTarget(SeatObjects)
+                        
+                        if seatPart then
+                            local door = CarregarModulo("smart_door.lua") 
+                            if door then door.IrPara(seatPart) end
+                            
+                            local cam = CarregarModulo("smart_cam")
+                            if cam and cam.OlharPara(seatPart) then
+                                Espera_ApertaE_Reseta({"sit", "use", "sentar", "usar"})
+                            end
+                            task.wait(1.5) -- Espera o boneco sentar de verdade
+                        else
+                            print("⚠️ Cadeira não encontrada, vou tocar em pé mesmo!")
+                            ClacarParaTocar()
+                            task.wait(1)
+                        end
+                    else
+                        -- Já está sentado, agora é só clicar pra tocar
+                        print("🎵 Já estou sentado, tocando...")
+                        ClacarParaTocar()
+                        task.wait(1)
+                    end
+                end
+                
+            else
+                -- ESTADO: MÃOS VAZIAS - Procura instrumento
+                acaoDado = nil -- Reseta o dado pra próxima vez
+                
+                if hum.Sit then
+                    hum.Jump = true 
+                    task.wait(1)
+                else
+                    print("🔍 Procurando instrumento...")
+                    local instrumentoPart = GetTarget(InstrumentObjects)
+                    
+                    if instrumentoPart then
+                        print("🎸 Instrumento encontrado!")
+                        instrumentoSelecionado = instrumentoPart
+                        
+                        local door = CarregarModulo("smart_door.lua")
+                        if door then door.IrPara(instrumentoPart) end
+                        
+                        local cam = CarregarModulo("smart_cam")
+                        if cam and cam.OlharPara(instrumentoPart) then
+                            Espera_ApertaE_Reseta({"take", "equip", "play", "pegar", "tocar", "use", "usar"})
+                        end
+                    else
+                        print("⏳ Nenhum instrumento encontrado")
+                        task.wait(1)
+                    end
+                end
+            end
+            
+            task.wait(0.5)
+        end
+    end)
+end
+
+function _G.Music.Stop()
+    isFarmingMusic = false
+    currentMacroId = currentMacroId + 1
+    instrumentoSelecionado = nil
+    instrumentoNome = nil
+    acaoDado = nil
+    pcall(function()
+        local cam = CarregarModulo("smart_cam")
+        if cam and cam.Reset then cam.Reset() end
+    end)
+end
+
+return _G.Music
+_G.Music = _G.Music or {}
+
+local Players = game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local isFarmingMusic = false
+local currentMacroId = 0
+
+-- Lista com os instrumentos
+local InstrumentObjects = {
+    "Toy Maracas", 
+    "Toy Tambourine", 
+    "Electric Guitar", 
+    "Rockstar Guitar", 
+    "Modern Guitar", 
+    "Acoustic Guitar"
+}
+
+-- Lista de assentos
+local SeatObjects = {"Sofa", "Chair", "Stool", "Bench"}
+
+local function CarregarModulo(nomeExato)
+    local url = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/" .. nomeExato
+    local s, r = pcall(function() return loadstring(game:HttpGet(url))() end)
+    return s and r or nil
+end
+
+-- Armazena o instrumento selecionado
+local instrumentoSelecionado = nil
+local instrumentoNome = nil
+local acaoDado = nil -- Armazena a ação (1 = de pé, 2 = sentado)
+
+local function GetTarget(list)
+    local p = workspace.Plots:FindFirstChild("Plot_" .. Players.LocalPlayer.Name)
+    local folder = p and p:FindFirstChild("House") and p.House:FindFirstChild("Objects")
+    if not folder then return nil end
+
+    local char = Players.LocalPlayer.Character
+    local humRootPart = char and char:FindFirstChild("HumanoidRootPart")
+    if not humRootPart then return nil end
+
+    local found = {}
+    for _, obj in ipairs(folder:GetChildren()) do
+        for _, name in ipairs(list) do
+            if string.find(string.lower(obj.Name), string.lower(name)) then 
+                table.insert(found, obj) 
+                break 
+            end
+        end
+    end
+
+    if #found == 0 then return nil end
+
+    -- Pega o mais próximo
+    local chosen = nil
+    local menorDist = math.huge
+    
+    for _, obj in ipairs(found) do
+        local objPos = obj:IsA("BasePart") and obj.Position or (obj:FindFirstChildWhichIsA("BasePart") and obj:FindFirstChildWhichIsA("BasePart").Position or nil)
+        if objPos then
+            local dist = (humRootPart.Position - objPos).Magnitude
+            if dist < menorDist then
+                menorDist = dist
+                chosen = obj
+            end
+        end
+    end
+
+    if chosen then
+        local part = chosen:FindFirstChild("Seat", true) or chosen:FindFirstChild("Door1", true) or chosen
+        return part, chosen.Name
+    end
+    
+    return nil
+end
+
+-- Verifica se tem instrumento na mão (olha o ActionLabel)
+local function TemInstrumentoNaMao()
+    local ok, res = pcall(function()
+        local label = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer.ActionLabel
+        if label and label.Parent.Visible and label.Text ~= "" then
+            return string.lower(label.Text)
+        end
+        return "" 
+    end)
+    return ok and res or ""
+end
+
+local function Espera_ApertaE_Reseta(validWords)
+    pcall(function()
+        local cam = CarregarModulo("smart_cam")
+        if cam and cam.Reset then cam.Reset() end
+    end)
+    task.wait(0.5) 
+    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+    local timeout = tick() + 2.5 
+    local achouUI = false
+    
+    while tick() < timeout do
+        local interactUI = playerGui:FindFirstChild("_interactUI")
+        if interactUI then
+            local indicator = interactUI:FindFirstChild("InteractIndicator")
+            if indicator and indicator.Visible then
+                local textLabel = indicator:FindFirstChild("TextLabel")
+                if textLabel then
+                    local txt = string.lower(textLabel.Text)
+                    for _, word in ipairs(validWords) do
+                        if string.find(txt, word) then
+                            achouUI = true
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        if achouUI then break end
+        task.wait(0.1)
+    end
+    
+    if achouUI then
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+        task.wait(0.2)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+        task.wait(1)
+    end
+    return achouUI
+end
+
+-- Move o mouse e clica
+local function MoverMouseParaPonto(x, y)
+    local mouse = Players.LocalPlayer:GetMouse()
+    local velocidade = 100
+    
+    local xAtual = mouse.X
+    local yAtual = mouse.Y
+    
+    while math.abs(xAtual - x) > 5 or math.abs(yAtual - y) > 5 do
+        local distX = x - xAtual
+        local distY = y - yAtual
+        local dist = math.sqrt(distX * distX + distY * distY)
+        
+        if dist > 0 then
+            xAtual = xAtual + (distX / dist) * velocidade * (1/60)
+            yAtual = yAtual + (distY / dist) * velocidade * (1/60)
+        end
+        
+        pcall(function()
+            mouse.X = xAtual
+            mouse.Y = yAtual
+        end)
+        
+        task.wait(1/60)
+    end
+    
+    pcall(function()
+        mouse.X = x
+        mouse.Y = y
+    end)
+end
+
+-- Simula clique do mouse para tocar
+local function ClacarParaTocar()
+    local player = Players.LocalPlayer
+    local hotbar = player.PlayerGui.HUDGui.Hotbar
+    
+    local equippedContainer = hotbar:FindFirstChild("EquippedContainer")
+    
+    if not equippedContainer then return false end
+    
+    local equippedButton = equippedContainer:FindFirstChild("EquippedButton")
+    
+    if not equippedButton or not equippedButton.Visible then
+        return false
+    end
+    
+    local botaoPos = equippedButton.AbsolutePosition
+    local botaoSize = equippedButton.AbsoluteSize
+    local centerX = botaoPos.X + (botaoSize.X / 2)
+    local centerY = botaoPos.Y + (botaoSize.Y / 2)
+    
+    MoverMouseParaPonto(centerX, centerY)
+    task.wait(0.1)
+    
+    local mouse = player:GetMouse()
+    
+    pcall(function()
+        mouse.Button1Down:Fire()
+    end)
+    
+    task.wait(0.08)
+    
+    pcall(function()
+        mouse.Button1Up:Fire()
+    end)
+    
+    return true
+end
+
+function _G.Music.Start()
+    if isFarmingMusic then return end
+    isFarmingMusic = true
+    currentMacroId = currentMacroId + 1
+    local myId = currentMacroId
+
+    task.spawn(function()
+        while isFarmingMusic and currentMacroId == myId do
+            local char = Players.LocalPlayer.Character
+            local hum = char and char:FindFirstChild("Humanoid")
+            if not hum then task.wait(1) continue end
+
+            local handText = TemInstrumentoNaMao()
+            
+            -- CORREÇÃO: "Stop" ou "Parar" significa que ele JÁ está tocando.
+            local estaTocando = string.find(handText, "stop") or string.find(handText, "parar")
+            -- "Play", "Tocar", "Usar" significa que está na mão mas parado.
+            local estaSegurando = string.find(handText, "play") or string.find(handText, "tocar") or string.find(handText, "use") or string.find(handText, "usar")
+
+            if estaTocando then
+                -- ESTADO: TOCANDO - Aguarda até sumir o "Stop" (quando ele perder o instrumento)
+                print("🎵 Tocando música... Aguardando...")
+                task.wait(2)
+                
+            elseif estaSegurando then
+                -- ESTADO: JÁ PEGOU O INSTRUMENTO, MAS AINDA NÃO TOCOU
+                print("🎸 Instrumento na mão!")
+                
+                -- Se ainda não jogou o dado, joga agora
+                if not acaoDado then
+                    acaoDado = math.random(1, 2)
+                    print("🎲 Dado: " .. acaoDado)
+                end
+                
+                if acaoDado == 1 then
+                    -- AÇÃO 1: DE PÉ - Apenas clica para tocar
+                    print("🎵 Ação 1: DE PÉ - Começando a tocar")
+                    ClacarParaTocar()
+                    task.wait(1)
+                    
+                else
+                    -- AÇÃO 2: SENTADO - Procura uma cadeira e senta
+                    if not hum.Sit then
+                        print("🪑 Ação 2: SENTADO - Procurando cadeira")
+                        local seatPart = GetTarget(SeatObjects)
+                        
+                        if seatPart then
+                            local door = CarregarModulo("smart_door.lua") 
+                            if door then door.IrPara(seatPart) end
+                            
+                            local cam = CarregarModulo("smart_cam")
+                            if cam and cam.OlharPara(seatPart) then
+                                Espera_ApertaE_Reseta({"sit", "use", "sentar", "usar"})
+                            end
+                            task.wait(1.5) -- Espera o boneco sentar de verdade
+                        else
+                            print("⚠️ Cadeira não encontrada, vou tocar em pé mesmo!")
+                            ClacarParaTocar()
+                            task.wait(1)
+                        end
+                    else
+                        -- Já está sentado, agora é só clicar pra tocar
+                        print("🎵 Já estou sentado, tocando...")
+                        ClacarParaTocar()
+                        task.wait(1)
+                    end
+                end
+                
+            else
+                -- ESTADO: MÃOS VAZIAS - Procura instrumento
+                acaoDado = nil -- Reseta o dado pra próxima vez
+                
                 if hum.Sit then
                     hum.Jump = true 
                     task.wait(1)
