@@ -108,7 +108,6 @@ function _G.Intelligence.Start()
                 task.wait(0.3)
                 
                 -- Aqui o script carrega e executa o seu smart_click automaticamente
-                -- Se o seu arquivo no github tiver .lua no final, mude para "smart_click.lua"
                 CarregarModulo("smart_click")
                 
                 -- Tempo de folga para o smart_click fazer o trabalho dele antes do loop reiniciar
@@ -116,7 +115,8 @@ function _G.Intelligence.Start()
             elseif isHolding and not hum.Sit then
                 local seatPart = GetTarget(SeatObjects)
                 if seatPart then
-                    local door = CarregarModulo("smart_door") -- tirei o .lua caso o padrao do repo seja sem, ajuste se necessario
+                    -- VOLTOU AO NORMAL AQUI: smart_door.lua
+                    local door = CarregarModulo("smart_door.lua") 
                     if door then door.IrPara(seatPart) end
                     local cam = CarregarModulo("smart_cam")
                     if cam then 
@@ -129,7 +129,8 @@ function _G.Intelligence.Start()
             elseif not isHolding and not isReading and not hum.Sit then
                 local bookPart = GetTarget(BookObjects)
                 if bookPart then
-                    local door = CarregarModulo("smart_door")
+                    -- VOLTOU AO NORMAL AQUI TAMBÉM: smart_door.lua
+                    local door = CarregarModulo("smart_door.lua")
                     if door then door.IrPara(bookPart) end
                     local cam = CarregarModulo("smart_cam")
                     if cam then 
