@@ -11,6 +11,7 @@ if _G.MostrarObjetosIntel == nil then _G.MostrarObjetosIntel = false end
 if _G.BloxburgChef and typeof(_G.BloxburgChef.Stop) == "function" then pcall(function() _G.BloxburgChef.Stop() end) end
 if _G.SmartDoor and typeof(_G.SmartDoor.Cancelar) == "function" then pcall(function() _G.SmartDoor.Cancelar() end) end
 if _G.Intelligence and typeof(_G.Intelligence.Stop) == "function" then pcall(function() _G.Intelligence.Stop() end) end
+if _G.Music and typeof(_G.Music.Stop) == "function" then pcall(function() _G.Music.Stop() end) end
 task.wait(0.2) 
 
 -- CARREGAMENTO SEGURO DOS MÓDULOS (Evita o erro do Delta Console)
@@ -35,6 +36,14 @@ task.spawn(function()
         local intelURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/skills/Intelligence?t=" .. tostring(tick())
         local loadIntelFunc = loadstring(game:HttpGet(intelURL))
         if loadIntelFunc then _G.Intelligence = loadIntelFunc() end
+    end)
+end)
+
+task.spawn(function()
+    pcall(function()
+        local musicURL = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/skills/Music?t=" .. tostring(tick())
+        local loadMusicFunc = loadstring(game:HttpGet(musicURL))
+        if loadMusicFunc then _G.Music = loadMusicFunc() end
     end)
 end)
 
@@ -191,6 +200,25 @@ local function LoadMainHub()
         end
     end)
 
+    -- MUSIC
+    local MusicFrame = Instance.new("Frame", SkillsScroll); MusicFrame.Size = UDim2.new(1, -10, 0, 75); MusicFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25); Instance.new("UICorner", MusicFrame).CornerRadius = UDim.new(0, 6)
+    local MusicTitle = Instance.new("TextLabel", MusicFrame); MusicTitle.BackgroundTransparency = 1; MusicTitle.Position = UDim2.new(0, 10, 0, 5); MusicTitle.Size = UDim2.new(1, -20, 0, 20); MusicTitle.Font = Enum.Font.GothamBold; MusicTitle.Text = "🎸 Music (Auto-Play)"; MusicTitle.TextColor3 = Color3.fromRGB(255, 150, 150); MusicTitle.TextSize = 14; MusicTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+    local MusicFarmBtn = Instance.new("TextButton", MusicFrame); MusicFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40); MusicFarmBtn.Position = UDim2.new(0, 10, 0, 35); MusicFarmBtn.Size = UDim2.new(0, 280, 0, 30); MusicFarmBtn.Font = Enum.Font.GothamBold; MusicFarmBtn.Text = "▶ Iniciar Música"; MusicFarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255); MusicFarmBtn.TextSize = 12; Instance.new("UICorner", MusicFarmBtn).CornerRadius = UDim.new(0, 6)
+
+    local isMusicActive = false
+    MusicFarmBtn.MouseButton1Click:Connect(function()
+        if isMusicActive then
+            isMusicActive = false; MusicFarmBtn.Text = "▶ Iniciar Música"; MusicFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
+            pcall(function() if _G.Music then _G.Music.Stop() end end)
+        else
+            isMusicActive = true; MusicFarmBtn.Text = "🛑 Parar Música"; MusicFarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+            PausedLabel.Text = ""
+            pcall(function() if _G.Music then _G.Music.Start() end end)
+            MinimizeUI()
+        end
+    end)
+
     SkillsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() SkillsScroll.CanvasSize = UDim2.new(0, 0, 0, SkillsLayout.AbsoluteContentSize.Y + 10) end)
 
     -- PAINEL DE COMIDAS
@@ -224,6 +252,13 @@ local function LoadMainHub()
             IntelFarmBtn.Text = "▶ Retomar Inteligência"
             IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
             pcall(function() if _G.Intelligence then _G.Intelligence.Stop() end end)
+            interrompeuAlgo = true
+        end
+        if isMusicActive then
+            isMusicActive = false
+            MusicFarmBtn.Text = "▶ Retomar Música"
+            MusicFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
+            pcall(function() if _G.Music then _G.Music.Stop() end end)
             interrompeuAlgo = true
         end
         if isUIActive then
