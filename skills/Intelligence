@@ -1,14 +1,14 @@
-_G.Intelligence = {}
+_G.Intelligence = _G.Intelligence or {}
 
 local Players = game:GetService("Players")
 local VirtualInputManager = game:GetService("VirtualInputManager")
-local GuiService = game:GetService("GuiService")
 local isFarmingIntel = false
 local currentMacroId = 0
 
 local BookObjects = {"Bookcase", "Dresser", "Books", "Book"}
 local SeatObjects = {"Sofa", "Toilet", "Chair", "Stool", "Bench"}
 
+-- Função para carregar módulos do seu repositório
 local function CarregarModulo(nomeExato)
     local url = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/" .. nomeExato
     local s, r = pcall(function() return loadstring(game:HttpGet(url))() end)
@@ -19,14 +19,14 @@ local function GetTarget(list)
     local p = workspace.Plots:FindFirstChild("Plot_" .. Players.LocalPlayer.Name)
     local folder = p and p:FindFirstChild("House") and p.House:FindFirstChild("Objects")
     if not folder then return nil end
-    
+
     local found = {}
     for _, obj in ipairs(folder:GetChildren()) do
         for _, name in ipairs(list) do
             if string.find(string.lower(obj.Name), string.lower(name)) then table.insert(found, obj) break end
         end
     end
-    
+
     if #found > 0 then
         local chosen = found[math.random(1, #found)]
         local part = chosen:FindFirstChild("Books", true) or chosen:FindFirstChild("Seat", true) or chosen:FindFirstChild("Door1", true) or chosen
@@ -44,22 +44,6 @@ local function CheckHand()
         return ""
     end)
     return ok and res or ""
-end
-
-local function ClicarBotaoEquipado()
-    pcall(function()
-        local container = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer
-        if container and container.Visible then
-            local pos = container.AbsolutePosition
-            local size = container.AbsoluteSize
-            local inset = GuiService:GetGuiInset()
-            local x = pos.X + (size.X / 2) + inset.X
-            local y = pos.Y + (size.Y / 2) + inset.Y
-            VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
-            task.wait(0.1)
-            VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
-        end
-    end)
 end
 
 local function Espera_ApertaE_Reseta(validWords)
@@ -122,12 +106,17 @@ function _G.Intelligence.Start()
                 task.wait(1)
             elseif isHolding and hum.Sit then
                 task.wait(0.3)
-                ClicarBotaoEquipado()
-                task.wait(1)
+                
+                -- Aqui o script carrega e executa o seu smart_click automaticamente
+                -- Se o seu arquivo no github tiver .lua no final, mude para "smart_click.lua"
+                CarregarModulo("smart_click")
+                
+                -- Tempo de folga para o smart_click fazer o trabalho dele antes do loop reiniciar
+                task.wait(2) 
             elseif isHolding and not hum.Sit then
                 local seatPart = GetTarget(SeatObjects)
                 if seatPart then
-                    local door = CarregarModulo("smart_door.lua")
+                    local door = CarregarModulo("smart_door") -- tirei o .lua caso o padrao do repo seja sem, ajuste se necessario
                     if door then door.IrPara(seatPart) end
                     local cam = CarregarModulo("smart_cam")
                     if cam then 
@@ -140,7 +129,7 @@ function _G.Intelligence.Start()
             elseif not isHolding and not isReading and not hum.Sit then
                 local bookPart = GetTarget(BookObjects)
                 if bookPart then
-                    local door = CarregarModulo("smart_door.lua")
+                    local door = CarregarModulo("smart_door")
                     if door then door.IrPara(bookPart) end
                     local cam = CarregarModulo("smart_cam")
                     if cam then 
