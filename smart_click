@@ -1,5 +1,5 @@
 -- Configurações e Variáveis
-local isFarmingIntel = true -- Já começa como verdadeiro para iniciar direto
+local isFarming = true -- Já começa como verdadeiro para iniciar direto (renomeado para abranger ambas as skills)
 
 local Players = game:GetService("Players")
 local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -70,13 +70,17 @@ local function ClicarNoBotao()
     return true
 end
 
--- Verifica se a barrinha de 'Intelligence' apareceu (sinal que está estudando)
+-- Verifica se a barrinha de 'Intelligence' ou 'Music' apareceu
 local function VerificarSeJaIniciou()
     local player = Players.LocalPlayer
     local status = player:FindFirstChild("PlayerGui"):FindFirstChild("HUDGui"):FindFirstChild("Moods"):FindFirstChild("StatusContainer")
     
-    if status and status:FindFirstChild("Intelligence") then
-        return true
+    if status then
+        if status:FindFirstChild("Intelligence") then
+            return "Inteligência"
+        elseif status:FindFirstChild("Music") then
+            return "Música"
+        end
     end
     return false
 end
@@ -90,15 +94,16 @@ local function IniciarScriptSozinho()
     task.wait(1)
     
     -- Loop de tentativa de clique
-    while isFarmingIntel do
+    while isFarming do
         local clicou = ClicarNoBotao()
         
         if clicou then
             task.wait(0.8) -- Espera o jogo processar o clique
             
-            if VerificarSeJaIniciou() then
-                Log("🧠 Inteligência detectada! Parando cliques.")
-                isFarmingIntel = false -- Para o loop
+            local skillIniciada = VerificarSeJaIniciou()
+            if skillIniciada then
+                Log("🎯 Habilidade '" .. skillIniciada .. "' detectada! Parando cliques.")
+                isFarming = false -- Para o loop
                 break
             end
         end
