@@ -15,17 +15,15 @@ local InstrumentObjects = {
     "Acoustic Guitar"
 }
 
--- Lista de assentos permitidos
+-- Lista de assentos
 local SeatObjects = {"Sofa", "Chair", "Stool", "Bench"}
 
--- Função para carregar módulos do seu repositório
 local function CarregarModulo(nomeExato)
     local url = "https://raw.githubusercontent.com/scriparadoxall/Bloxburg/main/" .. nomeExato
     local s, r = pcall(function() return loadstring(game:HttpGet(url))() end)
     return s and r or nil
 end
 
--- Função para buscar objetos na Plot
 local function GetTarget(list)
     local p = workspace.Plots:FindFirstChild("Plot_" .. Players.LocalPlayer.Name)
     local folder = p and p:FindFirstChild("House") and p.House:FindFirstChild("Objects")
@@ -49,11 +47,11 @@ local function GetTarget(list)
     return nil
 end
 
--- Verifica o que está escrito no botão de ação pelo caminho exato fornecido
+-- Função de verificação robusta (Caminho que você passou)
 local function CheckHand()
     local ok, res = pcall(function()
         local label = game:GetService("Players").LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer.ActionLabel
-        if label and label.Parent.Visible then
+        if label and label.Parent.Visible and label.Text ~= "" then
             return string.lower(label.Text)
         end
         return "" 
@@ -61,7 +59,6 @@ local function CheckHand()
     return ok and res or ""
 end
 
--- Interação física (Aperta E)
 local function Espera_ApertaE_Reseta(validWords)
     pcall(function()
         local cam = CarregarModulo("smart_cam")
@@ -97,7 +94,7 @@ local function Espera_ApertaE_Reseta(validWords)
         VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
         task.wait(0.2)
         VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-        task.wait(0.5)
+        task.wait(1) -- PAUSA DE SEGURANÇA: Espera o instrumento aparecer na mão
     end
     return achouUI
 end
@@ -116,24 +113,23 @@ function _G.Music.Start()
 
             local handText = CheckHand()
             
-            -- Detecta estados
+            -- Se tiver "play", "tocar" ou "stop" (já tocando), ele NÃO busca outro instrumento
             local isHolding = string.find(handText, "play") or string.find(handText, "tocar") or string.find(handText, "use") or string.find(handText, "usar")
             local isPlaying = string.find(handText, "stop") or string.find(handText, "parar")
 
             if isPlaying then
-                -- ESTADO: TOCANDO
-                -- Não faz nada, apenas espera. O loop só sairá daqui se 'isPlaying' se tornar falso (objeto sumir)
+                -- ESTADO: TOCANDO. Fica quieto e só verifica se sumiu.
                 task.wait(2)
                 
             elseif isHolding then
-                -- ESTADO: COM OBJETO NA MÃO, MAS NÃO TOCOU AINDA
+                -- ESTADO: JÁ PEGOU. Agora decide se senta ou toca em pé.
                 if hum.Sit then
-                    -- Se já está sentado, apenas clica para começar a música
+                    -- Se já sentou, começa a tocar
                     task.wait(0.5)
                     task.spawn(function() CarregarModulo("smart_click") end)
                     task.wait(3)
                 else
-                    -- Joga o dado: 1 tenta sentar, 2 fica em pé
+                    -- DADO: 1 tenta sentar, 2 fica em pé.
                     local dado = math.random(1, 2)
                     local seatPart = (dado == 1) and GetTarget(SeatObjects) or nil
                     
@@ -142,23 +138,21 @@ function _G.Music.Start()
                         if door then door.IrPara(seatPart) end
                         
                         local cam = CarregarModulo("smart_cam")
-                        if cam then 
-                            if cam.OlharPara(seatPart) then
-                                Espera_ApertaE_Reseta({"sit", "use", "sentar", "usar"})
-                            end
+                        if cam and cam.OlharPara(seatPart) then
+                            Espera_ApertaE_Reseta({"sit", "use", "sentar", "usar"})
                         end
                     else
-                        -- Fica em pé e toca
+                        -- Não achou cadeira ou preferiu ficar em pé
                         task.wait(0.5)
                         task.spawn(function() CarregarModulo("smart_click") end)
                         task.wait(3)
                     end
                 end
                 
-            elseif not isHolding and not isPlaying then
-                -- ESTADO: MÃOS VAZIAS (Objeto sumiu ou ainda não pegou)
+            else
+                -- ESTADO: MÃOS VAZIAS. Só aqui ele busca um instrumento.
                 if hum.Sit then
-                    hum.Jump = true -- Levanta se estiver sentado sem nada
+                    hum.Jump = true 
                     task.wait(1)
                 else
                     local instrumentPart = GetTarget(InstrumentObjects)
@@ -168,6 +162,7 @@ function _G.Music.Start()
                         
                         local cam = CarregarModulo("smart_cam")
                         if cam and cam.OlharPara(instrumentPart) then
+                            -- Pega o instrumento
                             Espera_ApertaE_Reseta({"take", "equip", "play", "pegar", "tocar", "use"})
                         end
                     end
