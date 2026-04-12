@@ -1,0 +1,113 @@
+-- Configurações e Variáveis
+local isFarmingIntel = true -- Já começa como verdadeiro para iniciar direto
+
+local Players = game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
+
+-- Função para enviar mensagens ao Console (F9)
+local function Log(msg)
+    print("[Auto-Macro Bloxburg] " .. tostring(msg))
+end
+
+-- Prepara o botão de clique movendo-o para um local fixo
+local function MoverEquippedContainer()
+    local player = Players.LocalPlayer
+    
+    pcall(function()
+        local hotbar = player.PlayerGui.HUDGui.Hotbar
+        local equippedContainer = hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer
+        
+        if equippedContainer then
+            -- Limpa restrições que impedem o redimensionamento
+            for _, child in ipairs(equippedContainer:GetChildren()) do
+                if child:IsA("UIListLayout") or child:IsA("UIAspectRatioConstraint") then
+                    child:Destroy()
+                end
+            end
+            
+            equippedContainer.Parent = nil
+            equippedContainer.Size = UDim2.new(0, 100, 0, 100)
+            equippedContainer.Position = UDim2.new(0, 10, 0, 10)
+            equippedContainer.BackgroundTransparency = 0
+            equippedContainer.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            equippedContainer.BorderSizePixel = 0
+            equippedContainer.Parent = hotbar
+            
+            Log("✅ Botão preparado para cliques.")
+        end
+    end)
+end
+
+-- Simula o clique físico na coordenada X, Y
+local function SimularCliqueNoPonto(x, y)
+    VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
+    task.wait(0.08)
+    VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
+    Log("🖱️ Clique executado em: " .. math.floor(x) .. ", " .. math.floor(y))
+end
+
+-- Localiza o botão e clica nele
+local function ClicarNoBotao()
+    local player = Players.LocalPlayer
+    local hotbar = player:FindFirstChild("PlayerGui"):FindFirstChild("HUDGui"):FindFirstChild("Hotbar")
+    
+    local equippedContainer = hotbar and hotbar:FindFirstChild("EquippedContainer")
+    if not equippedContainer then return false end
+    
+    local equippedButton = equippedContainer:FindFirstChild("EquippedButton")
+    if not equippedButton or not equippedButton.Visible then return false end
+    
+    -- Cálculos de posição na tela
+    local botaoPos = equippedButton.AbsolutePosition
+    local botaoSize = equippedButton.AbsoluteSize
+    local insetY = GuiService:GetGuiInset().Y
+    
+    local centerX = botaoPos.X + (botaoSize.X / 2)
+    local centerY = botaoPos.Y + (botaoSize.Y / 2) + insetY
+    
+    SimularCliqueNoPonto(centerX, centerY)
+    return true
+end
+
+-- Verifica se a barrinha de 'Intelligence' apareceu (sinal que está estudando)
+local function VerificarSeJaIniciou()
+    local player = Players.LocalPlayer
+    local status = player:FindFirstChild("PlayerGui"):FindFirstChild("HUDGui"):FindFirstChild("Moods"):FindFirstChild("StatusContainer")
+    
+    if status and status:FindFirstChild("Intelligence") then
+        return true
+    end
+    return false
+end
+
+-- Loop Principal que roda sozinho
+local function IniciarScriptSozinho()
+    Log("🚀 Script iniciado automaticamente!")
+    
+    -- Ajusta a UI primeiro
+    MoverEquippedContainer()
+    task.wait(1)
+    
+    -- Loop de tentativa de clique
+    while isFarmingIntel do
+        local clicou = ClicarNoBotao()
+        
+        if clicou then
+            task.wait(0.8) -- Espera o jogo processar o clique
+            
+            if VerificarSeJaIniciou() then
+                Log("🧠 Inteligência detectada! Parando cliques.")
+                isFarmingIntel = false -- Para o loop
+                break
+            end
+        end
+        
+        task.wait(1.5) -- Intervalo entre tentativas se não tiver iniciado
+    end
+    
+    Log("⏹️ Macro finalizado com sucesso.")
+end
+
+-- Executa a função principal sem precisar de nada
+IniciarScriptSozinho()
