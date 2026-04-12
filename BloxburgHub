@@ -66,6 +66,10 @@ local function LoadMainHub()
     Title.BackgroundTransparency = 1; Title.Size = UDim2.new(1, -40, 0, 40); Title.Position = UDim2.new(0, 15, 0, 0)
     Title.Font = Enum.Font.GothamBold; Title.Text = "Scriparadoxall Hub"; Title.TextColor3 = Color3.fromRGB(255, 255, 255); Title.TextSize = 18; Title.TextXAlignment = Enum.TextXAlignment.Left
 
+    local PausedLabel = Instance.new("TextLabel", MainFrame)
+    PausedLabel.BackgroundTransparency = 1; PausedLabel.Size = UDim2.new(0, 150, 0, 40); PausedLabel.Position = UDim2.new(0, 200, 0, 0)
+    PausedLabel.Font = Enum.Font.GothamBold; PausedLabel.Text = ""; PausedLabel.TextColor3 = Color3.fromRGB(255, 80, 80); PausedLabel.TextSize = 14; PausedLabel.TextXAlignment = Enum.TextXAlignment.Left
+
     local Divider = Instance.new("Frame", MainFrame)
     Divider.BackgroundColor3 = Color3.fromRGB(60, 60, 60); Divider.BorderSizePixel = 0; Divider.Position = UDim2.new(0, 0, 0, 40); Divider.Size = UDim2.new(1, 0, 0, 1)
 
@@ -136,6 +140,20 @@ local function LoadMainHub()
         end)
     end
 
+    -- Texto de Versão Beta na Sidebar (para não bugar)
+    local BetaSpacer = Instance.new("Frame", Sidebar) -- Espaçador para empurrar pro fundo
+    BetaSpacer.BackgroundTransparency = 1
+    BetaSpacer.Size = UDim2.new(1, 0, 1, -180) -- Ajusta o espaço livre restante
+    
+    local BetaText = Instance.new("TextLabel", Sidebar)
+    BetaText.BackgroundTransparency = 1
+    BetaText.Size = UDim2.new(1, 0, 0, 40)
+    BetaText.Font = Enum.Font.Gotham
+    BetaText.Text = "Hub Beta version\nhá diversos bugs\nsendo corrigidos."
+    BetaText.TextColor3 = Color3.fromRGB(130, 130, 130)
+    BetaText.TextSize = 10
+    BetaText.TextWrapped = true
+
     --------------------------
     -- SKILLS
     --------------------------
@@ -165,6 +183,7 @@ local function LoadMainHub()
             if _G.Intelligence then _G.Intelligence.Stop() end
         else
             isIntelActive = true; IntelFarmBtn.Text = "🛑 Parar Inteligência"; IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
+            PausedLabel.Text = ""
             if _G.Intelligence then _G.Intelligence.Start() end
             MinimizeUI()
         end
@@ -188,24 +207,30 @@ local function LoadMainHub()
         if isUIActive then
             isUIActive = false; FarmBtn.Text = "▶ Iniciar Farm"; FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40); if _G.BloxburgChef then _G.BloxburgChef.Stop() end
         else
-            isUIActive = true; FarmBtn.Text = "🛑 Parar Farm"; FarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40); FoodListPanel.Visible = false; if _G.BloxburgChef then _G.BloxburgChef.Start(selectedFoodUI) end
+            isUIActive = true; FarmBtn.Text = "🛑 Parar Farm"; FarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40); FoodListPanel.Visible = false; 
+            PausedLabel.Text = "" 
+            if _G.BloxburgChef then _G.BloxburgChef.Start(selectedFoodUI) end
             MinimizeUI()
         end
     end)
     
     PararTudo = function()
+        local interrompeuAlgo = false
         if isIntelActive then
             isIntelActive = false
-            IntelFarmBtn.Text = "▶ Iniciar Inteligência"
+            IntelFarmBtn.Text = "▶ Retomar Inteligência"
             IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
             if _G.Intelligence then _G.Intelligence.Stop() end
+            interrompeuAlgo = true
         end
         if isUIActive then
             isUIActive = false
-            FarmBtn.Text = "▶ Iniciar Farm"
+            FarmBtn.Text = "▶ Retomar Farm"
             FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
             if _G.BloxburgChef then _G.BloxburgChef.Stop() end
+            interrompeuAlgo = true
         end
+        if interrompeuAlgo then PausedLabel.Text = "⏸️ PAUSADO" end
     end
 
     --------------------------
@@ -228,9 +253,13 @@ local function LoadMainHub()
     --------------------------
     local ConfigPage = pageFrames["Config"]
 
-    -- Anti-AFK
-    local AntiAfkBtn = Instance.new("TextButton", ConfigPage); AntiAfkBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); AntiAfkBtn.Position = UDim2.new(0, 10, 0, 10); AntiAfkBtn.Size = UDim2.new(0, 200, 0, 40); AntiAfkBtn.Font = Enum.Font.GothamSemibold; AntiAfkBtn.Text = "🛡️ Anti-AFK [OFF]"; AntiAfkBtn.TextColor3 = Color3.fromRGB(255, 100, 100); AntiAfkBtn.TextSize = 14; Instance.new("UICorner", AntiAfkBtn).CornerRadius = UDim.new(0, 6)
-    local antiAfkConnection; local isAntiAfkOn = false
+    -- Anti-AFK (ATIVADO POR PADRÃO)
+    local AntiAfkBtn = Instance.new("TextButton", ConfigPage); AntiAfkBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); AntiAfkBtn.Position = UDim2.new(0, 10, 0, 10); AntiAfkBtn.Size = UDim2.new(0, 200, 0, 40); AntiAfkBtn.Font = Enum.Font.GothamSemibold; AntiAfkBtn.Text = "🛡️ Anti-AFK [ON]"; AntiAfkBtn.TextColor3 = Color3.fromRGB(100, 255, 100); AntiAfkBtn.TextSize = 14; Instance.new("UICorner", AntiAfkBtn).CornerRadius = UDim.new(0, 6)
+    
+    local antiAfkConnection; local isAntiAfkOn = true
+    -- Inicia o anti-afk imediatamente
+    antiAfkConnection = Players.LocalPlayer.Idled:Connect(function() VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame) task.wait(1) VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame) end)
+
     AntiAfkBtn.MouseButton1Click:Connect(function()
         isAntiAfkOn = not isAntiAfkOn
         if isAntiAfkOn then
