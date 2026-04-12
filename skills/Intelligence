@@ -104,34 +104,43 @@ function _G.Intelligence.Start()
                 task.wait(15)
                 hum.Jump = true 
                 task.wait(1)
+                
             elseif isHolding and hum.Sit then
-                task.wait(0.3)
+                -- 4. Quando finalmente sentar, usa o que você mandou (smart_click)
+                task.wait(0.5)
                 
-                -- Aqui o script carrega e executa o seu smart_click automaticamente
-                CarregarModulo("smart_click")
+                -- Colocado em task.spawn para o smart_click não travar esse loop!
+                task.spawn(function()
+                    CarregarModulo("smart_click")
+                end)
                 
-                -- Tempo de folga para o smart_click fazer o trabalho dele antes do loop reiniciar
-                task.wait(2) 
+                task.wait(3) -- Dá um tempinho pro smart_click trabalhar antes de recomeçar o loop
+                
             elseif isHolding and not hum.Sit then
+                -- 1. Passa aonde quer ir (smart_door)
                 local seatPart = GetTarget(SeatObjects)
                 if seatPart then
-                    -- VOLTOU AO NORMAL AQUI: smart_door.lua
                     local door = CarregarModulo("smart_door.lua") 
                     if door then door.IrPara(seatPart) end
+                    
+                    -- 2. Depois usa smart_cam
                     local cam = CarregarModulo("smart_cam")
                     if cam then 
                         local cameraPronta = cam.OlharPara(seatPart)
+                        
+                        -- 3. Aperta E (Senta)
                         if cameraPronta then
                             Espera_ApertaE_Reseta({"sit", "use", "sentar", "usar"})
                         end
                     end
                 end
+                
             elseif not isHolding and not isReading and not hum.Sit then
                 local bookPart = GetTarget(BookObjects)
                 if bookPart then
-                    -- VOLTOU AO NORMAL AQUI TAMBÉM: smart_door.lua
                     local door = CarregarModulo("smart_door.lua")
                     if door then door.IrPara(bookPart) end
+                    
                     local cam = CarregarModulo("smart_cam")
                     if cam then 
                         local cameraPronta = cam.OlharPara(bookPart)
