@@ -62,13 +62,20 @@ local function LoadMainHub()
     game:GetService("UserInputService").InputChanged:Connect(function(input) if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + (input.Position - dragStart).X, startPos.Y.Scale, startPos.Y.Offset + (input.Position - dragStart).Y) end end)
     MainFrame.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
 
+    -- TÍTULO NO TOPO
     local Title = Instance.new("TextLabel", MainFrame)
-    Title.BackgroundTransparency = 1; Title.Size = UDim2.new(1, -40, 0, 40); Title.Position = UDim2.new(0, 15, 0, 0)
+    Title.BackgroundTransparency = 1; Title.Size = UDim2.new(0, 200, 0, 25); Title.Position = UDim2.new(0, 15, 0, 5)
     Title.Font = Enum.Font.GothamBold; Title.Text = "Scriparadoxall Hub"; Title.TextColor3 = Color3.fromRGB(255, 255, 255); Title.TextSize = 18; Title.TextXAlignment = Enum.TextXAlignment.Left
 
+    -- AVISO DE BETA FIXO LÁ EM CIMA (Logo abaixo do título)
+    local BetaLabel = Instance.new("TextLabel", MainFrame)
+    BetaLabel.BackgroundTransparency = 1; BetaLabel.Size = UDim2.new(0, 300, 0, 15); BetaLabel.Position = UDim2.new(0, 15, 0, 23)
+    BetaLabel.Font = Enum.Font.Gotham; BetaLabel.Text = "Hub Beta version - Há diversos bugs sendo corrigidos."; BetaLabel.TextColor3 = Color3.fromRGB(180, 180, 180); BetaLabel.TextSize = 10; BetaLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    -- AVISO DE PAUSADO (Direcionado mais para a direita)
     local PausedLabel = Instance.new("TextLabel", MainFrame)
-    PausedLabel.BackgroundTransparency = 1; PausedLabel.Size = UDim2.new(0, 150, 0, 40); PausedLabel.Position = UDim2.new(0, 200, 0, 0)
-    PausedLabel.Font = Enum.Font.GothamBold; PausedLabel.Text = ""; PausedLabel.TextColor3 = Color3.fromRGB(255, 80, 80); PausedLabel.TextSize = 14; PausedLabel.TextXAlignment = Enum.TextXAlignment.Left
+    PausedLabel.BackgroundTransparency = 1; PausedLabel.Size = UDim2.new(0, 100, 0, 40); PausedLabel.Position = UDim2.new(1, -150, 0, 0)
+    PausedLabel.Font = Enum.Font.GothamBold; PausedLabel.Text = ""; PausedLabel.TextColor3 = Color3.fromRGB(255, 80, 80); PausedLabel.TextSize = 14; PausedLabel.TextXAlignment = Enum.TextXAlignment.Right
 
     local Divider = Instance.new("Frame", MainFrame)
     Divider.BackgroundColor3 = Color3.fromRGB(60, 60, 60); Divider.BorderSizePixel = 0; Divider.Position = UDim2.new(0, 0, 0, 40); Divider.Size = UDim2.new(1, 0, 0, 1)
@@ -140,20 +147,6 @@ local function LoadMainHub()
         end)
     end
 
-    -- Texto de Versão Beta na Sidebar (para não bugar)
-    local BetaSpacer = Instance.new("Frame", Sidebar) -- Espaçador para empurrar pro fundo
-    BetaSpacer.BackgroundTransparency = 1
-    BetaSpacer.Size = UDim2.new(1, 0, 1, -180) -- Ajusta o espaço livre restante
-    
-    local BetaText = Instance.new("TextLabel", Sidebar)
-    BetaText.BackgroundTransparency = 1
-    BetaText.Size = UDim2.new(1, 0, 0, 40)
-    BetaText.Font = Enum.Font.Gotham
-    BetaText.Text = "Hub Beta version\nhá diversos bugs\nsendo corrigidos."
-    BetaText.TextColor3 = Color3.fromRGB(130, 130, 130)
-    BetaText.TextSize = 10
-    BetaText.TextWrapped = true
-
     --------------------------
     -- SKILLS
     --------------------------
@@ -172,127 +165,4 @@ local function LoadMainHub()
 
     -- INTELLIGENCE
     local IntelFrame = Instance.new("Frame", SkillsScroll); IntelFrame.Size = UDim2.new(1, -10, 0, 75); IntelFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25); Instance.new("UICorner", IntelFrame).CornerRadius = UDim.new(0, 6)
-    local IntelTitle = Instance.new("TextLabel", IntelFrame); IntelTitle.BackgroundTransparency = 1; IntelTitle.Position = UDim2.new(0, 10, 0, 5); IntelTitle.Size = UDim2.new(1, -20, 0, 20); IntelTitle.Font = Enum.Font.GothamBold; IntelTitle.Text = "🧠 Intelligence (Auto-Read)"; IntelTitle.TextColor3 = Color3.fromRGB(150, 150, 255); IntelTitle.TextSize = 14; IntelTitle.TextXAlignment = Enum.TextXAlignment.Left
-
-    local IntelFarmBtn = Instance.new("TextButton", IntelFrame); IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40); IntelFarmBtn.Position = UDim2.new(0, 10, 0, 35); IntelFarmBtn.Size = UDim2.new(0, 280, 0, 30); IntelFarmBtn.Font = Enum.Font.GothamBold; IntelFarmBtn.Text = "▶ Iniciar Inteligência"; IntelFarmBtn.TextColor3 = Color3.fromRGB(255, 255, 255); IntelFarmBtn.TextSize = 12; Instance.new("UICorner", IntelFarmBtn).CornerRadius = UDim.new(0, 6)
-
-    local isIntelActive = false
-    IntelFarmBtn.MouseButton1Click:Connect(function()
-        if isIntelActive then
-            isIntelActive = false; IntelFarmBtn.Text = "▶ Iniciar Inteligência"; IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
-            if _G.Intelligence then _G.Intelligence.Stop() end
-        else
-            isIntelActive = true; IntelFarmBtn.Text = "🛑 Parar Inteligência"; IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40)
-            PausedLabel.Text = ""
-            if _G.Intelligence then _G.Intelligence.Start() end
-            MinimizeUI()
-        end
-    end)
-
-    SkillsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() SkillsScroll.CanvasSize = UDim2.new(0, 0, 0, SkillsLayout.AbsoluteContentSize.Y + 10) end)
-
-    -- PAINEL DE COMIDAS
-    local FoodListPanel = Instance.new("ScrollingFrame", SkillsPage); FoodListPanel.BackgroundColor3 = Color3.fromRGB(25, 25, 25); FoodListPanel.Position = UDim2.new(0, 10, 0, 70); FoodListPanel.Size = UDim2.new(0, 150, 0, 145); FoodListPanel.ScrollBarThickness = 4; FoodListPanel.ZIndex = 10; FoodListPanel.Visible = false; Instance.new("UICorner", FoodListPanel).CornerRadius = UDim.new(0, 6)
-    local FoodLayout = Instance.new("UIListLayout", FoodListPanel); FoodLayout.Padding = UDim.new(0, 2)
-    local listaComidas = {"Baby Food", "Garden Salad", "Hot Dogs", "Corn on the Cob", "Vegetable Soup", "Fruit Salad", "Mini Corndogs"}
-    for _, comida in ipairs(listaComidas) do
-        local btn = Instance.new("TextButton", FoodListPanel); btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35); btn.Size = UDim2.new(1, 0, 0, 30); btn.ZIndex = 11; btn.Font = Enum.Font.Gotham; btn.Text = comida; btn.TextColor3 = Color3.fromRGB(200, 200, 200); btn.TextSize = 12
-        btn.MouseButton1Click:Connect(function() selectedFoodUI = comida; FoodBtn.Text = "🍕 " .. selectedFoodUI; FoodListPanel.Visible = false end)
-    end
-    FoodLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() FoodListPanel.CanvasSize = UDim2.new(0, 0, 0, FoodLayout.AbsoluteContentSize.Y) end)
-    FoodBtn.MouseButton1Click:Connect(function() FoodListPanel.Visible = not FoodListPanel.Visible end)
-
-    local isUIActive = false
-    FarmBtn.MouseButton1Click:Connect(function()
-        if isUIActive then
-            isUIActive = false; FarmBtn.Text = "▶ Iniciar Farm"; FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40); if _G.BloxburgChef then _G.BloxburgChef.Stop() end
-        else
-            isUIActive = true; FarmBtn.Text = "🛑 Parar Farm"; FarmBtn.BackgroundColor3 = Color3.fromRGB(150, 40, 40); FoodListPanel.Visible = false; 
-            PausedLabel.Text = "" 
-            if _G.BloxburgChef then _G.BloxburgChef.Start(selectedFoodUI) end
-            MinimizeUI()
-        end
-    end)
-    
-    PararTudo = function()
-        local interrompeuAlgo = false
-        if isIntelActive then
-            isIntelActive = false
-            IntelFarmBtn.Text = "▶ Retomar Inteligência"
-            IntelFarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
-            if _G.Intelligence then _G.Intelligence.Stop() end
-            interrompeuAlgo = true
-        end
-        if isUIActive then
-            isUIActive = false
-            FarmBtn.Text = "▶ Retomar Farm"
-            FarmBtn.BackgroundColor3 = Color3.fromRGB(40, 150, 40)
-            if _G.BloxburgChef then _G.BloxburgChef.Stop() end
-            interrompeuAlgo = true
-        end
-        if interrompeuAlgo then PausedLabel.Text = "⏸️ PAUSADO" end
-    end
-
-    --------------------------
-    -- AUTOMATIONS (Logs)
-    --------------------------
-    local AutoPage = pageFrames["Automations"]
-    local LogPanel = Instance.new("ScrollingFrame", AutoPage); LogPanel.BackgroundColor3 = Color3.fromRGB(12, 12, 12); LogPanel.Position = UDim2.new(0, 5, 0, 5); LogPanel.Size = UDim2.new(1, -15, 1, -10); LogPanel.ScrollBarThickness = 4; LogPanel.BorderSizePixel = 0; Instance.new("UICorner", LogPanel).CornerRadius = UDim.new(0, 6)
-    local LogLayout = Instance.new("UIListLayout", LogPanel); LogLayout.SortOrder = Enum.SortOrder.LayoutOrder; LogLayout.Padding = UDim.new(0, 2)
-
-    local logCount = 0
-    _G.BloxburgChef_AddLog = function(texto, cor)
-        logCount = logCount + 1
-        local newLog = Instance.new("TextLabel", LogPanel); newLog.BackgroundTransparency = 1; newLog.Size = UDim2.new(1, -10, 0, 16); newLog.Font = Enum.Font.Code; newLog.Text = "[" .. os.date("%H:%M") .. "] " .. texto; newLog.TextColor3 = cor or Color3.fromRGB(200, 200, 200); newLog.TextSize = 11; newLog.TextXAlignment = Enum.TextXAlignment.Left; newLog.LayoutOrder = logCount
-        LogPanel.CanvasSize = UDim2.new(0, 0, 0, LogLayout.AbsoluteContentSize.Y); LogPanel.CanvasPosition = Vector2.new(0, LogLayout.AbsoluteContentSize.Y)
-    end
-    _G.BloxburgChef_AddLog("Hub iniciado com sucesso!", Color3.fromRGB(50, 255, 255))
-
-    --------------------------
-    -- CONFIG
-    --------------------------
-    local ConfigPage = pageFrames["Config"]
-
-    -- Anti-AFK (ATIVADO POR PADRÃO)
-    local AntiAfkBtn = Instance.new("TextButton", ConfigPage); AntiAfkBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); AntiAfkBtn.Position = UDim2.new(0, 10, 0, 10); AntiAfkBtn.Size = UDim2.new(0, 200, 0, 40); AntiAfkBtn.Font = Enum.Font.GothamSemibold; AntiAfkBtn.Text = "🛡️ Anti-AFK [ON]"; AntiAfkBtn.TextColor3 = Color3.fromRGB(100, 255, 100); AntiAfkBtn.TextSize = 14; Instance.new("UICorner", AntiAfkBtn).CornerRadius = UDim.new(0, 6)
-    
-    local antiAfkConnection; local isAntiAfkOn = true
-    -- Inicia o anti-afk imediatamente
-    antiAfkConnection = Players.LocalPlayer.Idled:Connect(function() VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame) task.wait(1) VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame) end)
-
-    AntiAfkBtn.MouseButton1Click:Connect(function()
-        isAntiAfkOn = not isAntiAfkOn
-        if isAntiAfkOn then
-            AntiAfkBtn.Text = "🛡️ Anti-AFK [ON]"; AntiAfkBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
-            antiAfkConnection = Players.LocalPlayer.Idled:Connect(function() VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame) task.wait(1) VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame) end)
-        else
-            AntiAfkBtn.Text = "🛡️ Anti-AFK [OFF]"; AntiAfkBtn.TextColor3 = Color3.fromRGB(255, 100, 100); if antiAfkConnection then antiAfkConnection:Disconnect() end
-        end
-    end)
-
-    -- Rota Visual
-    local RouteBtn = Instance.new("TextButton", ConfigPage); RouteBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); RouteBtn.Position = UDim2.new(0, 10, 0, 60); RouteBtn.Size = UDim2.new(0, 200, 0, 40); RouteBtn.Font = Enum.Font.GothamSemibold; RouteBtn.TextSize = 14; Instance.new("UICorner", RouteBtn).CornerRadius = UDim.new(0, 6)
-    if _G.MostrarBolinhas then RouteBtn.Text = "👁️ Rota Visual [ON]"; RouteBtn.TextColor3 = Color3.fromRGB(100, 255, 100) else RouteBtn.Text = "👁️ Rota Visual [OFF]"; RouteBtn.TextColor3 = Color3.fromRGB(255, 100, 100) end
-    RouteBtn.MouseButton1Click:Connect(function()
-        _G.MostrarBolinhas = not _G.MostrarBolinhas
-        if _G.MostrarBolinhas then RouteBtn.Text = "👁️ Rota Visual [ON]"; RouteBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
-        else RouteBtn.Text = "👁️ Rota Visual [OFF]"; RouteBtn.TextColor3 = Color3.fromRGB(255, 100, 100) end
-    end)
-
-    -- Mostrar Objetos
-    local ObjBtn = Instance.new("TextButton", ConfigPage); ObjBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40); ObjBtn.Position = UDim2.new(0, 10, 0, 110); ObjBtn.Size = UDim2.new(0, 200, 0, 40); ObjBtn.Font = Enum.Font.GothamSemibold; ObjBtn.TextSize = 13; Instance.new("UICorner", ObjBtn).CornerRadius = UDim.new(0, 6)
-    if _G.MostrarObjetosIntel then ObjBtn.Text = "📦 Marcar Objetos [ON]"; ObjBtn.TextColor3 = Color3.fromRGB(100, 255, 100) else ObjBtn.Text = "📦 Marcar Objetos [OFF]"; ObjBtn.TextColor3 = Color3.fromRGB(255, 100, 100) end
-    ObjBtn.MouseButton1Click:Connect(function()
-        _G.MostrarObjetosIntel = not _G.MostrarObjetosIntel
-        if _G.MostrarObjetosIntel then ObjBtn.Text = "📦 Marcar Objetos [ON]"; ObjBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
-        else ObjBtn.Text = "📦 Marcar Objetos [OFF]"; ObjBtn.TextColor3 = Color3.fromRGB(255, 100, 100) end
-    end)
-end
-
-if hideWarning then LoadMainHub() else
-    local WarningUI = Instance.new("ScreenGui"); WarningUI.Name = "ScriparadoxWarning"; WarningUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling; pcall(function() WarningUI.Parent = CoreGui end); if not WarningUI.Parent then WarningUI.Parent = Players.LocalPlayer:WaitForChild("PlayerGui") end
-    local WarnFrame = Instance.new("Frame", WarningUI); WarnFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20); WarnFrame.Position = UDim2.new(0.5, -225, 0.5, -125); WarnFrame.Size = UDim2.new(0, 450, 0, 250); Instance.new("UICorner", WarnFrame).CornerRadius = UDim.new(0, 8)
-    local WarnTitle = Instance.new("TextLabel", WarnFrame); WarnTitle.BackgroundTransparency = 1; WarnTitle.Size = UDim2.new(1, 0, 0, 40); WarnTitle.Font = Enum.Font.GothamBold; WarnTitle.Text = "⚠️ IMPORTANT WARNING ⚠️"; WarnTitle.TextColor3 = Color3.fromRGB(255, 80, 80); WarnTitle.TextSize = 18
-    local ContinueBtn = Instance.new("TextButton", WarnFrame); ContinueBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 200); ContinueBtn.Position = UDim2.new(1, -120, 1, -65); ContinueBtn.Size = UDim2.new(0, 100, 0, 30); ContinueBtn.Font = Enum.Font.GothamBold; ContinueBtn.Text = "I Understand"; ContinueBtn.TextColor3 = Color3.fromRGB(255, 255, 255); ContinueBtn.TextSize = 14; Instance.new("UICorner", ContinueBtn).CornerRadius = UDim.new(0, 6)
-    ContinueBtn.MouseButton1Click:Connect(function() WarningUI:Destroy() LoadMainHub() end)
-end
+    local IntelTitle = Instance.new("TextLabel", IntelFrame); IntelTitle.BackgroundTransparency = 1; IntelTitle.Position = UDim2.new(0, 10, 0, 5); IntelTitle.Size =
