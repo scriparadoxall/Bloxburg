@@ -15,7 +15,7 @@ local InstrumentObjects = {
     "Acoustic Guitar"
 }
 
--- Lista de assentos permitidos (Sofa incluso)
+-- Lista de assentos permitidos
 local SeatObjects = {"Sofa", "Chair", "Stool", "Bench"}
 
 -- Função para carregar módulos do seu repositório
@@ -49,20 +49,19 @@ local function GetTarget(list)
     return nil
 end
 
--- Verifica o que está escrito no botão de ação da mão do personagem
+-- Verifica o que está escrito no botão de ação pelo caminho exato fornecido
 local function CheckHand()
     local ok, res = pcall(function()
-        local label = Players.LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer.ActionLabel
-        -- Se o texto sumir ou a UI ficar invisível, retorna vazio
+        local label = game:GetService("Players").LocalPlayer.PlayerGui.HUDGui.Hotbar.LayoutContainer.LeftButtonContainer.EquippedContainer.ActionLabel
         if label and label.Parent.Visible then
             return string.lower(label.Text)
         end
-        return ""
+        return "" 
     end)
     return ok and res or ""
 end
 
--- Espera a interface de interação (Apertar E) aparecer, aperta E e reseta a câmera
+-- Interação física (Aperta E)
 local function Espera_ApertaE_Reseta(validWords)
     pcall(function()
         local cam = CarregarModulo("smart_cam")
@@ -117,60 +116,59 @@ function _G.Music.Start()
 
             local handText = CheckHand()
             
-            -- Verifica se tem as palavras-chave na mão ("play", "tocar" indicam que pegou o objeto)
+            -- Detecta estados
             local isHolding = string.find(handText, "play") or string.find(handText, "tocar") or string.find(handText, "use") or string.find(handText, "usar")
             local isPlaying = string.find(handText, "stop") or string.find(handText, "parar")
 
-            -- LÓGICA DE AÇÕES
-            if isPlaying and hum.Sit then
-                -- 4. Já está sentado e tocando: Fica farmando por um tempo e levanta pra resetar o ciclo
-                task.wait(15)
-                hum.Jump = true 
-                task.wait(1)
+            if isPlaying then
+                -- ESTADO: TOCANDO
+                -- Não faz nada, apenas espera. O loop só sairá daqui se 'isPlaying' se tornar falso (objeto sumir)
+                task.wait(2)
                 
-            elseif isHolding and hum.Sit then
-                -- 3. Sentou com o instrumento na mão (Text = Play): usa o smart_click para começar a tocar
-                task.wait(0.5)
-                task.spawn(function()
-                    CarregarModulo("smart_click")
-                end)
-                task.wait(3) 
-                
-            elseif isHolding and not hum.Sit then
-                -- 2. Está com o instrumento na mão (Text = Play) mas em pé: vai para o sofá sentar
-                local seatPart = GetTarget(SeatObjects)
-                if seatPart then
-                    local door = CarregarModulo("smart_door.lua") 
-                    if door then door.IrPara(seatPart) end
+            elseif isHolding then
+                -- ESTADO: COM OBJETO NA MÃO, MAS NÃO TOCOU AINDA
+                if hum.Sit then
+                    -- Se já está sentado, apenas clica para começar a música
+                    task.wait(0.5)
+                    task.spawn(function() CarregarModulo("smart_click") end)
+                    task.wait(3)
+                else
+                    -- Joga o dado: 1 tenta sentar, 2 fica em pé
+                    local dado = math.random(1, 2)
+                    local seatPart = (dado == 1) and GetTarget(SeatObjects) or nil
                     
-                    local cam = CarregarModulo("smart_cam")
-                    if cam then 
-                        local cameraPronta = cam.OlharPara(seatPart)
-                        if cameraPronta then
-                            Espera_ApertaE_Reseta({"sit", "use", "sentar", "usar"})
+                    if seatPart then
+                        local door = CarregarModulo("smart_door.lua") 
+                        if door then door.IrPara(seatPart) end
+                        
+                        local cam = CarregarModulo("smart_cam")
+                        if cam then 
+                            if cam.OlharPara(seatPart) then
+                                Espera_ApertaE_Reseta({"sit", "use", "sentar", "usar"})
+                            end
                         end
+                    else
+                        -- Fica em pé e toca
+                        task.wait(0.5)
+                        task.spawn(function() CarregarModulo("smart_click") end)
+                        task.wait(3)
                     end
                 end
                 
             elseif not isHolding and not isPlaying then
-                -- O TEXTO "PLAY" SUMIU OU ESTÁ DE MÃOS VAZIAS
+                -- ESTADO: MÃOS VAZIAS (Objeto sumiu ou ainda não pegou)
                 if hum.Sit then
-                    -- Se o objeto sumiu enquanto ele estava sentado, levanta primeiro!
-                    hum.Jump = true
+                    hum.Jump = true -- Levanta se estiver sentado sem nada
                     task.wait(1)
                 else
-                    -- 1. Sem nada na mão e em pé: procura um instrumento, vai até ele e pega
                     local instrumentPart = GetTarget(InstrumentObjects)
                     if instrumentPart then
                         local door = CarregarModulo("smart_door.lua")
                         if door then door.IrPara(instrumentPart) end
                         
                         local cam = CarregarModulo("smart_cam")
-                        if cam then 
-                            local cameraPronta = cam.OlharPara(instrumentPart)
-                            if cameraPronta then
-                                Espera_ApertaE_Reseta({"take", "equip", "play", "pegar", "tocar", "use"})
-                            end
+                        if cam and cam.OlharPara(instrumentPart) then
+                            Espera_ApertaE_Reseta({"take", "equip", "play", "pegar", "tocar", "use"})
                         end
                     end
                 end
